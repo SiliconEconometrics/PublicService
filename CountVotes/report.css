@@ -1,0 +1,29 @@
+table {
+  color: #333;
+  font-family: Helvetica, Arial, sans-serif;
+  border-collapse:
+  collapse; border-spacing: 0;
+}
+
+td, th {
+  border: 1px solid transparent; /* No more visible border */
+  height: 30px;
+  transition: all 0.3s;  /* Simple transition for hover effect */
+}
+
+th, tr.Head td {
+  background: #DFDFDF;  /* Darken header a bit */
+  font-weight: bold;
+}
+
+td {
+  text-align: left;
+}
+
+tr.Group { background : #CCCCCC; } 
+
+/* Cells in even rows (2,4,6...) are one color */
+tr.Striped:nth-child(even) td { background: #F1F1F1; }  
+
+/* Cells in odd rows (1,3,5...) are another (excludes header cells)  */
+tr.Candidate:nth-child(odd) td { background: #FEFEFE; } 
