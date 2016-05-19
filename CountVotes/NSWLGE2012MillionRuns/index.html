@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="ISO-8859-1">
+<title>Results of running the program a million times on each contest in the local government elections 2012</title>
+</head>
+<body>
+<p>
+We ran our <a href="https://github.com/SiliconEconometrics/PublicService">program</a> a million times on each contest in the 2012 NSW local government elections.
+The results are shown here in four tables:
+</p>
+<ul>
+  <li><a href="LocalGovernmentNSW2012_All.html">All contests</a></li>
+  <li><a href="LocalGovernmentNSW2012_Stochastic.html">Only those contests that had different results (who or order) in at least one run</a></li>
+  <li><a href="LocalGovernmentNSW2012_StochasticElected.html">Only those contests that had different results (who was elected) in at least one run</a></li>
+  <li><a href="LocalGovernmentNSW2012_NotOfficial.html">Only those contests where the most likely outcome differed from the official results (who or order)</a></li>
+</ul>
+<p>
+Each contest is shown with a table of the elected people, for each showing the proportion of the time they are
+elected, the mean position that they were elected in amongst the times they were elected, and the official
+position elected.
+</p>
+
+<p>
+This is meant to give an idea of the level of randomness that the election counting algorithm produces. We are
+not claiming that we understand the legislation properly (it is somewhat ambiguous), nor the NSWEC specification
+(it is somewhat ambiguous and, we think, self-contradictory - we try to follow the text, not the pseudocode), 
+nor that our program is without errors. So the results may
+not be correct. We do not warranty them in any way. 
+You should avoid trusting programs when you can, including ours.
+But on the bright side the results are somewhat neatly presented. 
+Our program is <a href="https://github.com/SiliconEconometrics/PublicService">available</a> for you to look at, you can run it yourself, and, best of all, you can 
+write your own program and check it against ours.
+</p>
+</body>
+</html>
