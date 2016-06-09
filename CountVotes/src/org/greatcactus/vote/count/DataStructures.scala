@@ -1,5 +1,5 @@
 /*
-    Copyright 2015 Silicon Econometrics Pty. Ltd. 
+    Copyright 2015-2016 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -14,8 +14,8 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
  */
+
 package org.greatcactus.vote.count
 
 import java.io.BufferedReader
@@ -29,6 +29,7 @@ import java.io.FileWriter
 
 
 sealed class ElectionData(
+    val name : String,
     val candidates : Array[Candidate],
     val satls : Array[SATL],
     val ratls : Array[ATL],
@@ -40,9 +41,10 @@ sealed class ElectionData(
     println("SATLs : "+numSATLs)
     println("RATLS : "+numRATLs+" num distinct = "+ratls.length)
     println("BTLs : "+btls.length)
-    println("Total formal votes : "+(numSATLs+numRATLs+btls.length))
+    println("Total formal votes : "+totalFormalVotes)
     println("Candidates : " + candidates.size)
   }
+  def totalFormalVotes = numSATLs+numRATLs+btls.length
   def makeVotes : Array[Vote] = {
     val res = new scala.collection.mutable.ArrayBuffer[Vote]
     val groups : Map[String,Array[Int]] = Map.empty++ (for ((group,l)<-candidates.zipWithIndex.groupBy{ _._1.group }) yield (group,l.map{_._2}.toList.sorted.toArray))
@@ -52,6 +54,12 @@ sealed class ElectionData(
     res.toArray
   }
   def candidateIndex(name:String) : Int = candidates.indexWhere { _.name==name}
+  def numCandidates = candidates.length
+  
+  /** Same data, should produce same results, but with the id numbers of the candidates reversed. Used for testing... if it doesn't produce the same results, something is wrong. */
+  def reverseCandidateOrder : ElectionData = {
+    new ElectionData(name,candidates.reverse,satls,ratls,btls.map{btl => new BTL(btl.candidates.map{numCandidates-1-_})})
+  }
 }
 
 trait Dumpable {
@@ -83,139 +91,45 @@ sealed class BTL(/** candidate ids listed in preference order */ val candidates:
 
 
 
-object LoadFromFile {
-  val groups = "ABCDEFGHIJKLMNOPQRSTX"
-  val numGroups = groups.length
-  val groupIndex : Map[Char,Int] = Map.empty++(groups.zipWithIndex)
-  
-  val numCandidates = 394
-  val dir = "/Users/Andrew/Desktop/"
-  val file = dir+"SGE2015 LC Pref Data_NA_State.txt"
-  def fastfile(justIvote:Boolean) = dir+"Fast "+(if (justIvote) "ivote " else "")+"Preferences.txt"
-  
-  def load(justIvote:Boolean) : ElectionData = try { loadPickled(justIvote) } catch { case e:Exception => e.printStackTrace(); println("Loading manually"); val res = loadRaw(justIvote); savePickled(res,justIvote); res }
-    
-  /*
-      implicit val upA1B = PicklerUnpickler.generate[BTL]
-
-    implicit val upAB = PicklerUnpickler.generate[Vector[BTL]]
-    implicit val upAA = PicklerUnpickler.generate[Array[ATL]]
-    implicit val upAS = PicklerUnpickler.generate[Array[SATL]]
-    implicit val upAC = PicklerUnpickler.generate[Array[Candidate]]
-    implicit val upAED = PicklerUnpickler.generate[ElectionData]
-
-  
-  def savePickled(data:ElectionData) {
-    //PicklerUnpickler.generate[SATL]
-    val pickle : Array[Byte] = data.pickle.value
-    println("Pickled to "+pickle.length+" bytes as "+new String(pickle))
-    println("Candidates Pickled to "+data.candidates.pickle.value.length+" bytes")
-    println("RATLs Pickled to "+data.ratls.pickle.value.length+" bytes")
-    println("BTLs Pickled to "+data.btls.pickle.value.length+" bytes")
-    val w = new FileOutputStream(fastfile)
-    w.write(pickle)
-    w.close()
-  }
-  */
-  
-  def savePickled(data:ElectionData,justIvote:Boolean) {
-    val w = new PrintWriter(new FileWriter(fastfile(justIvote)))
-    def go[T <: Dumpable](a:Array[T]) {
-      w.println(a.length)
-      for (e<-a) w.println(e.line)
-    }
-    go(data.candidates)
-    go(data.satls)
-    go(data.ratls)
-    go(data.btls)
-    w.close()  
-  }
-  
-  def loadPickled(justIvote:Boolean) : ElectionData = {
-    val r = new BufferedReader(new FileReader(fastfile(justIvote)))
-    //val pickle = BinaryPickle(is)
-    import scala.reflect._
-    def read[T](f:String=>T)(implicit tag : ClassTag[T]) : Array[T] = {
-      val len = r.readLine().toInt
-      val res = new Array[T](len)
-      for (i<-0 until len) res(i)=f(r.readLine())
-      res
-    }
-    val candidates = read[Candidate]{s=>val ss = s.split('\t'); new Candidate(ss(0),ss(1),ss(2).toInt)}
-    val satls = read[SATL]{s=>val ss=s.split('\t'); new SATL(ss(0).charAt(0),ss(1).toInt)}
-    val ratls = read[ATL]{s=>val ss=s.split('\t'); new ATL(ss(0).toCharArray(),ss(1).toInt)}
-    val btls = read[BTL]{s=>new BTL(s.split(',').map{_.toInt})}
-    val res = new ElectionData(candidates,satls,ratls,btls) //  pickle.unpickle[ElectionData]
-    r.close()
-    res
-  }
-  
-  def loadRaw(justIvote:Boolean) : ElectionData = {
-    val r = new BufferedReader(new FileReader(file))
-    var line : String = r.readLine();
-    val candidates = new scala.collection.mutable.HashMap[String,Candidate]
+class VoteInterpreter(groups:String,numCandidates:Int,numGroups:Int) {
     val btl = new scala.collection.mutable.HashMap[Int,BelowTheLineBuilder]
     val atl = new scala.collection.mutable.HashMap[Int,AboveTheLineBuilder]
-    val satlCounts = new Array[Int](numGroups)
-    //val satls = new ListBuffer[AboveTheLineVote]
-    try { while (line!=null) {
-        val fields = line.split('\t')
-        if (fields.length!=12) {
-          if (fields.length!=11 || fields(10)!="Informal") println("Wrong number of fields for "+line)
-        }
-        else if (fields(10)=="Formal" && !fields(6).isEmpty) {
-          val ballotID = fields(4).toInt
-          val preferenceNumber = fields(6).toInt
-          def candidate() : Candidate = {
-              val candidateName = fields(7)
-              candidates.getOrElseUpdate(candidateName,new Candidate(candidateName,fields(8),fields(9).toInt))
-          }
-          if (justIvote && fields(3)!="iVote") { if (fields(11)=="BTL") candidate() }
-          else fields(11) match {
-            case "BTL" =>
-              val v = btl.getOrElseUpdate(ballotID,new BelowTheLineBuilder(ballotID))
-              v.addVote(candidate,preferenceNumber)
-            case "SATL" => 
-              //val v = new AboveTheLineVote(ballotID,List(groupIndex(fields(8).charAt(0))))
-              //satls+=v
-              satlCounts(groupIndex(fields(8).charAt(0)))+=1
-            case "RATL" =>
-              val groupCode = fields(8).charAt(0)
-              val v = atl.getOrElseUpdate(ballotID,new AboveTheLineBuilder(ballotID))
-              v.addVote(groupCode,preferenceNumber)
-         }
-        }
-        line=r.readLine();  
-    }} catch {
-      case e : Exception =>
-        println(line)
-        e.printStackTrace()
+    val satlCounts = new Array[Int](groups.length)
+  
+    def addBTL(ballotID:Int,candidate:Candidate,preferenceNumber:Int) {
+              val v = btl.getOrElseUpdate(ballotID,new BelowTheLineBuilder(ballotID,numCandidates))
+              v.addVote(candidate,preferenceNumber)      
     }
-    println("SATLs : "+satlCounts.sum)
-    println("RATLs : "+atl.size)
-    println("BTLs : "+btl.size)
-    println("candidates : "+candidates.size)
-    
-    def groupLT(s1:String,s2:String) : Boolean = {
-      if (s1=="") false else if (s2=="") true else s1<s2
+    def addRATL(ballotID:Int,groupCode:Char,preferenceNumber:Int) {
+              val v = atl.getOrElseUpdate(ballotID,new AboveTheLineBuilder(ballotID,numGroups))
+              v.addVote(groupCode,preferenceNumber)      
     }
-    val orderedCandidates = candidates.values.toList.sortWith((c1,c2)=>groupLT(c1.group,c2.group) || (c1.group==c2.group&&c1.position<c2.position)).toArray
-    val candidateToIndex : Map[Candidate,Int]=Map.empty++orderedCandidates.zipWithIndex
-    val satls = for ((count,index)<-satlCounts.zipWithIndex) yield new SATL(groups(index),count)
-    def canonatls(atlmap:scala.collection.mutable.HashMap[Int,AboveTheLineBuilder]) = {
-      val strings = (for (v<-atlmap.values) yield v.get).toList
-      val bunched = for ((s,l)<-strings.groupBy { a => a }) yield new ATL(s.toCharArray(),l.length)
-      bunched.toArray
+    def addSATL(groupIndex:Int) {
+      satlCounts(groupIndex)+=1
     }
-    val btls = for (v<-btl.values) yield v.get(candidateToIndex)
-    new ElectionData(orderedCandidates,satls.toArray,canonatls(atl),btls.toArray)
-  }
+    def getData(orderedCandidates:Array[Candidate],name:String) : ElectionData = {
+      //println("SATLs : "+satlCounts.sum)
+      //println("RATLs : "+atl.size)
+      //println("BTLs : "+btl.size)
+      //println("candidates : "+orderedCandidates.length)
+
+      val candidateToIndex : Map[Candidate,Int]=Map.empty++orderedCandidates.zipWithIndex
+      val satls = for ((count,index)<-satlCounts.zipWithIndex) yield new SATL(groups(index),count)
+      def canonatls(atlmap:scala.collection.mutable.HashMap[Int,AboveTheLineBuilder]) = {
+        val strings = (for (v<-atlmap.values) yield v.get).toList
+        val bunched = for ((s,l)<-strings.groupBy { a => a }) yield new ATL(s.toCharArray(),l.length)
+        bunched.toArray
+      }
+      val btls = for (v<-btl.values) yield v.get(candidateToIndex)
+      new ElectionData(name,orderedCandidates,satls.toArray,canonatls(atl),btls.toArray)
+    }
 }
+
 
 class AboveTheLineVote(val ballotID:Int,/** groups voted for, in order */val groups:List[Int])
 
-class AboveTheLineBuilder(val ballotID:Int) {
-  val prefs:Array[Char]=new Array[Char](LoadFromFile.numGroups)
+class AboveTheLineBuilder(val ballotID:Int,numGroups:Int) {
+  val prefs:Array[Char]=new Array[Char](numGroups)
   
   def addVote(group:Char,preferenceNumber:Int) { prefs(preferenceNumber-1)=group } // LoadFromFile.groupIndex(group))=preferenceNumber}
   
@@ -224,11 +138,12 @@ class AboveTheLineBuilder(val ballotID:Int) {
   }
 }
 
-class BelowTheLineBuilder(val ballotID:Int) {
-  val candidates = new Array[Candidate](LoadFromFile.numCandidates)
+class BelowTheLineBuilder(val ballotID:Int,numCandidates:Int) {
+  val candidates = new Array[Candidate](numCandidates)
   def addVote(candidate:Candidate,preferenceNumber:Int) { candidates(preferenceNumber-1)=candidate}
-  def get(candidateIndex: Candidate=>Int) : BTL = { 
-    new BTL(candidates.toList.takeWhile(_ !=null).toArray.map(candidateIndex))
+  def get(candidateIndex: Candidate=>Int) : BTL = {
+    val nonnull = candidates.takeWhile(_ !=null)
+    new BTL(nonnull.map(candidateIndex))
   }
 
 }

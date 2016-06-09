@@ -1,5 +1,5 @@
 /*
-    Copyright 2015 Silicon Econometrics Pty. Ltd. 
+    Copyright 2015-2016 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -14,19 +14,24 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
  */
+
 
 
 This is a program to count the senate votes in the NSW (Australia) state election.
 It is designed for research purposes only, being deficient in a
 variety of important ways compared to the specification at 
 http://www.elections.nsw.gov.au/__data/assets/pdf_file/0009/171684/Functional_Requirements_for_Vote_Count_v3.2.pdf
-  (1) It does not correctly implement tie resolution for rounding of partially transferred votes.
+  (1) It may not correctly implement tie resolution for rounding of partially transferred votes,
+      in the case of a more than three way tie. [ The specification and indeed legislation is ambiguous ]
       (this can rarely affect the choice of one vote during a partial redistribution)
       This is step 18/19 from the specification.
   (2) Not seriously tested. It produces similar results to the official tally 
       (taking randomness into account), but has not been serious tested.
+      There are some differences with the official tallies. The biggest one
+      (Griffith LGE 2012) turned out to be an error in the official count,
+      acknowledged by the NSW election commission. [ See tech report in the
+      github repository. ]
   (3) Not producing the required documentation (e.g. recording each PRN)
   (4) Is not reproducible with a given random seed, as, when a random selection is
       made of a set, the elements are not first sorted into a canonical order.
@@ -35,7 +40,11 @@ http://www.elections.nsw.gov.au/__data/assets/pdf_file/0009/171684/Functional_Re
       1,000,000 votes randomly, it will randomly pick the 100,000 to leave out rather than the
       larger number to leave in.
   (6) Random draws are done automatically; you can't physically draw them out of a hat.
-  (7) Things I have forgotten or neglected.
+  (7) Sections 1.4.14.1 and 1.4.14.2 of the specification are contradictory. I have tried
+      to implement 1.4.14.1 as it seems more defensible given my reading of the legislation.
+      [ and has since been confirmed by the NSW election commission. ] But the 
+      legislation appears ambiguous to me so I have no idea if I am following it.
+  (8) Things I have forgotten or neglected.
 Summary: This is provided in the hope it is useful but no guarantees of anything.
 
 It can run multiple times in a multithreaded manner to investigate the effect of randomness,
@@ -54,44 +63,46 @@ project using the scala plugin. If you are not using eclipse, just use the src p
 If using eclipse, you will need to set the path for the scala-xml library manually.
 
 
-Running
--------
+Running State Election 2015
+---------------------------
 
 1) Get the state wide preferences data file from
    http://www.vtr.elections.nsw.gov.au/lc-home.htm#lc/state/preferences
 
-2) Unzip it.
+2) Look at the file NSWStateElectionData.scala, the first three lines starting 
+      val <something> = new File("<path>")
+   The first one should contain the path to the previously downloaded file.
+   
+   The second should contain a path where cache files can be created. 
+   These are simplified version of the above file.
+   These files may be deleted after use if wished.
+   
+   The third one should contain a folder where reports should be stored. Note that the program
+   will create files in there, first deleting ones that may conflict. *** VITAL: Don't make it somewhere
+   containing something you want to save. ******* 
 
-3) Change the following line in the file DataStructures.scala to the directory containing the unzipped file:
-     val dir = "/Users/Andrew/Desktop/"
+3) Run "RunElection" as a scala application to run a single time. It will make a statistics
+   file in the directory specified above.
    
-4) When the program runs it will parse this file, and create a simplified version ignoring
-   various not needed things. Subsequent runs will use this file and be faster.
-   It will also print out statistics on unique votes.
-   (it will create a copy that is restricted to iVote results, and can be used
-   to look at various statistics, such as in PreferencesStats)
-   
-5) Run "RunElection" as a scala application to run a single time. It will make a statistics
-   file in the direction specified in the file ElectionReport :
-     val dir = "/Users/Andrew/Desktop/Election Report/"
- 
-    *** VITAL: NOTE THAT THE PROGRAM WILL DELETE THE CONTENTS OF THIS DIRECTORY FIRST.
-       DO NOT JUST MAKE IT YOUR DESKTOP OR OTHER IMPORTANT DIRECTORY.  ****
-     
    The report will look prettier if you copy the file report.css into the parent directory
    of said directory. Start at index.html.
    
    Much information will also be printed to the console.
 
-5) Run "RunProbabilistically" as a scala application to run many times. Set the lines
-    val numRunsPerThread = 2500
+4) Run "RunNSWStateElectionProbabilistically" as a scala application to run many times. Set the lines
+    val numTotalRuns = 10000
     val numThreads = 4
    To the numbers required.
    After each of the first ten, and then every hundred, it will print out a summary
    of the results, including the margin for the final elimination, and for each
    candidate ever elected, the proportion of times elected and mean position.
    
+Running Local Government Elections 2012
+---------------------------------------
+The easiest solution to running a single contest is to use the NSWLocalElectionGUI application (with a GUI).
 
+Reproducing in bulk is harder because it requires downloading everything and putting it in an understandable
+directory structure.
 
 
 General comments on code
