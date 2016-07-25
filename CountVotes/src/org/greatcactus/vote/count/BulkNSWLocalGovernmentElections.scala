@@ -147,7 +147,7 @@ object NSWLocalData {
                        if (giveDetailedReportOnOneRun) {
                           val worker = new NSWElectionHelper(data,contest.electedCandidates.length,new scala.util.Random,electionRules,ineligibleCandidates)
                           worker.run()
-                          ElectionReport.saveReports(new File("LGE2012reports/"+prettyName+"/"),worker.report)
+                          ElectionReport.saveReports(new File("LGE2012reports/"+prettyName+"/"),worker.report,data)
                        }
                        val output = new StatusOutput {
                          def status(isFinished:Boolean,heading:String,margin:String,candidates:IndexedSeq[CandidateStat]) {

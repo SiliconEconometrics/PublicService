@@ -16,7 +16,8 @@
 
  */
 
-
+NSW
+---
 
 This is a program to count the senate votes in the NSW (Australia) state election.
 It is designed for research purposes only, being deficient in a
@@ -49,6 +50,25 @@ Summary: This is provided in the hope it is useful but no guarantees of anything
 
 It can run multiple times in a multithreaded manner to investigate the effect of randomness,
 taking 5s per run.
+
+Federal Australia
+-----------------
+It has been modified to run the (much simpler, deterministic other than tie resolution) counting
+algorithm used by the AEC and load 2013 data. It also produces some margin information - some number
+of votes that could be changed to alter the election outcome - useful for determining tamper
+sensitivity.
+
+To run 2013: Put downloaded data files in Election/Federal/2013, and run FederalSenateCount2013App in FederalSenateCount.scala.
+It will produce files in Federal2013Reports. Start with About.html
+
+To run 2013: Put downloaded data files in Election/Federal/2016, and run FederalSenateCount2016App in FederalSenateCount.scala.
+It will produce files in Federal2016Reports. Start with About.html
+
+This seems to produce exactly the same results as the official 2013 results, except for a difference of one paper in the last count in 2013 (which didn't change the number of votes because of rounding). I have no idea what caused this.
+It produced exactly the same results as the official 2016 NT results (others not available at time of writing), but this is a very weak statement as there was exactly one count.
+
+As above, there are lots of reasons not to trust it. This is provided in the hope it is useful but no guarantees of anything.
+
 
 
 Compiling

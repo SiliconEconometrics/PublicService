@@ -32,8 +32,10 @@ object ElectionReport {
     IOUtil.copyFile(new File("report.css"),new File(dir,"report.css"))
   }
   
-  def generateReportForASingleCount(step:ElectionCountReport,number:Int,candidates:Array[Candidate]) = {
+  def generateReportForASingleCount(step:ElectionCountReport,number:Int,data:ElectionData) = {
+    val candidates = data.candidates
     val t = step.countType
+    val usePapers = step.usePapers
     <html>
       <head>
         <meta charset="UTF-8"/> 
@@ -43,23 +45,24 @@ object ElectionReport {
       <body>
         <p>{step.heading(candidates)}</p>
         {for (e<-step.electedCandidates) yield <p>{candidates(e).name} elected</p>}
+        {for (s<-step.equalCandidatesDisabiguatedByEC) yield <p>Election Commission needed to choose among equal candidates {for (c<-s.toList.sorted) yield candidates(c).name+" ("+c+") "} </p>}        
         <table class="Display">
-           <tr class="Head"><td>Group</td><td>Candidate</td>{if (t.useStartCounts) <td>Start Votes</td>}{if (t.useDistributed) <td>Distributed</td>}{if (t.useTransferred) <td>Transferred</td>}{if (t.useSetAside) <td>Set Aside</td>}<td>Progressive Total</td></tr>
+           <tr class="Head"><td>Group</td><td>Candidate</td>{if (t.useStartCounts) <td>Start Votes</td>} {if (t.useStartCounts&&usePapers) <td>Start Papers</td>}{if (t.useDistributed) <td>Distributed</td>}{if (t.useTransferred) <td>Transferred</td>} {if (t.useTransferred&&usePapers) <td>Transferred Papers</td>}{if (t.useSetAside) <td>Set Aside</td>}{if (usePapers) <td>Papers</td>}<td>Progressive Total</td></tr>
            {
              var lastgroup = "***"
              for (i<-0 until candidates.length) yield {
                val c = candidates(i)
                def isElected = if (step.end.electedCandidates.contains(i)) Some("Elected") else None
-               def isExcluded = if (step.start.excludedCandidates.contains(i)) Some("Excluded") else None
+               def isExcluded = if (step.start.excludedCandidates.contains(i) && step.start.votesPerCandidate(i)==0.0) Some("Excluded") else None
                val isExcludedEnd = if (step.end.excludedCandidates.contains(i)) Some("Excluded") else None
                val isIneligible = if (step.end.ineligibleCandidates.contains(i)) Some("Ineligible") else None
                def startOverride : Option[String] = isExcluded orElse isIneligible
                def middleOverride : Option[String] = isElected orElse isExcluded orElse isIneligible
                val endOverride : Option[String] = isExcludedEnd orElse isIneligible
-               val r2 = <tr class="Striped"><td></td><td>{c.name}</td>{if (t.useStartCounts) <td>{startOverride getOrElse step.string_totalAtStart(i)}</td>}{if (t.useDistributed) <td>{middleOverride getOrElse step.string_ballotPapersDistributed(i)}</td>}{if (t.useTransferred) <td>{middleOverride getOrElse step.string_ballotPapersTransferred(i)}</td>}{if (t.useSetAside) <td>{middleOverride getOrElse step.string_ballotPapersSetAside(i)}</td>}<td>{endOverride getOrElse step.string_totalAtEnd(i)}</td></tr>
+               val r2 = <tr class="Striped"><td></td><td>{c.name}</td>{if (t.useStartCounts) <td>{startOverride getOrElse step.string_totalAtStart(i)}</td>} {if (t.useStartCounts&&usePapers) <td class="papers">{step.string_papersAtStart(i)}</td>}{if (t.useDistributed) <td>{middleOverride getOrElse step.string_ballotPapersDistributed(i)}</td>}{if (t.useTransferred) <td>{middleOverride getOrElse step.string_ballotPapersTransferred(i)}</td>}{if (t.useTransferred&&usePapers) <td class="papers">{step.string_papersTransferred(i)}</td>}{if (t.useSetAside) <td>{middleOverride getOrElse step.string_ballotPapersSetAside(i)}</td>}{if (usePapers) <td class="papers" title={step.string_papersAtEndATL(i)+" ATL, "+step.string_papersAtEndBTL(i)+" BTL"}>{step.string_papersAtEnd(i)}</td>}<td>{endOverride getOrElse step.string_totalAtEnd(i)}</td></tr>
                if (c.group!=lastgroup) {
                  lastgroup=c.group
-                 val r1 = <tr class="Group"><td>{c.group}</td><td></td>{if (t.useStartCounts) <td></td>}{if (t.useDistributed) <td></td>}{if (t.useTransferred) <td></td>}{if (t.useSetAside) <td></td>}<td></td></tr>
+                 val r1 = <tr class="Group"><td>{c.group}</td><td class="groupname">{data.groupNameFromID(c.group)}</td>{if (t.useStartCounts) <td></td>}{if (t.useStartCounts&&usePapers) <td></td>}{if (t.useDistributed) <td></td>}{if (t.useTransferred) <td></td>}{if (t.useTransferred&&usePapers) <td></td>}{if (t.useSetAside) <td></td>}{if (usePapers) <td></td>}<td></td></tr>
                  r1++r2
                } else r2 
              }
@@ -71,16 +74,57 @@ object ElectionReport {
                case excess:CountReportTypeExcessDistribution => (blankIfZero(excess.numExhaustedSetAside+excess.numExhaustedThatWouldBeCarriedOn),blankIfZero(excess.numExhaustedThatWouldBeCarriedOn),blankIfZero(excess.numExhaustedSetAside))
                case _ => ("","","")
              }*/
-             <tr class="Exhausted"><td></td><td>Exhausted</td>{if (t.useStartCounts) <td>{step.string_exhaustedAtStart}</td>}{if (t.useDistributed) <td>{step.string_exhaustedDistributed}</td>}{if (t.useTransferred) <td>{step.string_exhaustedTransferred}</td>}{if (t.useSetAside) <td>{step.string_exhaustedSetAside}</td>}<td>{step.string_exhaustedAtEnd}</td></tr>
+             <tr class="Exhausted"><td></td><td>Exhausted</td>{if (t.useStartCounts) <td>{step.string_exhaustedAtStart}</td>}{if (t.useStartCounts&&usePapers) <td class="papers">{step.string_exhaustedPapersAtStart}</td>}{if (t.useDistributed) <td>{step.string_exhaustedDistributed}</td>}{if (t.useTransferred) <td>{step.string_exhaustedTransferred}</td>}{if (t.useTransferred&&usePapers) <td class="papers">{step.string_exhaustedPapersTransferred}</td>}{if (t.useSetAside) <td>{step.string_exhaustedSetAside}</td>}{if (usePapers) <td class="papers">{step.string_exhaustedPapersAtEnd}</td>}<td>{step.string_exhaustedAtEnd}</td></tr>
            }
+           { if (step.useRounding) {
+             <tr class="Rounding"><td></td><td>Rounding</td>{if (t.useStartCounts) <td>{step.string_roundingAtStart}</td>}{if (t.useStartCounts&&usePapers) <td></td>}{if (t.useDistributed) <td></td>}{if (t.useTransferred) <td>{step.string_roundingTransferred}</td>}{if (t.useTransferred&&usePapers) <td></td>}{if (t.useSetAside) <td></td>}{if (usePapers) <td></td>}<td>{step.string_roundingAtEnd}</td></tr>          
+           }}
            {/*
              val setAsidePrior : Int = step.countType match {
                case excess:CountReportTypeExcessDistribution => step.totalAtStart(excess.candidateDistributed)-excess.numVotesToBeRedistributed
                case _ => 0
              }*/
-             if (step.countType.setAsidePrior>0) <tr class="SetAside"><td></td><td>Set Aside (previous counts)</td>{if (t.useStartCounts) <td></td>}{if (t.useDistributed) <td></td>}{if (t.useTransferred) <td></td>}{if (t.useSetAside) <td>{step.string_setAsidePrior}</td>}<td></td></tr>
+             if (step.countType.setAsidePrior>0) <tr class="SetAside"><td></td><td>Set Aside (previous counts)</td>{if (t.useStartCounts) <td></td>}{if (t.useStartCounts&&usePapers) <td></td>}{if (t.useDistributed) <td></td>}{if (t.useTransferred) <td></td>}{if (t.useTransferred&&usePapers) <td></td>}{if (t.useSetAside) <td>{step.string_setAsidePrior}</td>}{if (usePapers) <td></td>}<td></td></tr>
            }
         </table>
+      </body>
+    </html>
+  }
+  
+  def generateMarginReport(data:ElectionData,report:ElectionResultReport,requireTamperable:Boolean) = {
+    val candidates = data.candidates
+    def table(justShowElected:Boolean)= {
+         <table class="Display">
+           <tr class="Head"><td>Group</td><td>Candidate</td><td>Margin votes</td><td>Margin papers</td><td>Counting Step</td><td>Vote Recipients</td></tr>
+           {
+             var lastgroup = "***"
+             val margins = report.margins(requireTamperable) 
+             for (i<-0 until candidates.length) yield {
+               val margin = margins(i)
+               val c = candidates(i)
+               val elected = report.electedCandidates.contains(i)
+               if (elected || !justShowElected) {
+                 val r2 = <tr class="Striped"><td></td><td>{c.name}</td><td>{margin.map{_.votes}.getOrElse("")}</td><td>{margin.map{_.papers}.getOrElse("")}</td><td>{margin.map{_.step}.getOrElse("")}</td><td>{margin.map{_.how(data.candidates)}.getOrElse("")}</td></tr>
+                 if (c.group!=lastgroup) {
+                   lastgroup=c.group
+                   val r1 = <tr class="Group"><td>{c.group}</td><td class="groupname">{data.groupNameFromID(c.group)}</td><td/><td/><td/><td/></tr>
+                   r1++r2
+                 } else r2      
+               }
+             }
+           }
+         </table>
+    }
+    <html>
+      <head>
+        <meta charset="UTF-8"/> 
+        <title>Margins</title>
+        <link href="report.css" type="text/css" rel="stylesheet"></link>
+      </head>
+      <body>
+        <p>Simple Margins - the number of fewer votes for candidate X that would make X be excluded earlier than actual, all else being unchanged. Candidates elected before any exclusions not included. Of course there may be more complex ways to achieve the same result with fewer changes by altering the order of eliminations.</p>
+        <p>First preferences may {if (requireTamperable) "NOT" else ""} be changed</p>
+        <p><em>Just elected</em></p> {table(true)} <p><em>All</em></p> {table(false)}
       </body>
     </html>
   }
@@ -103,40 +147,64 @@ object ElectionReport {
                    {for (c<-step.electedCandidates) yield <p>{candidates(c).name}</p>}
                  </td>
                  <td>{val c=step.countType.candidateDistributed;if (c!= -1) candidates(c).name}</td>
-                 <td>{val c=step.countType.candidateEliminated;if (c!= -1) candidates(c).name}</td>
+                 <td> {for (c<-step.countType.candidatesEliminated) yield <p>{candidates(c).name}</p>}</td>
                </tr>
            }
         </table>
+        {if (result.hasMarginInfo) <p>Margins <a href="marginsAllow1PrefsChanges.html">allowing</a> and <a href="marginsNo1Prefs.html">not allowing</a> first preference changes</p>}
       </body>
     </html>
   }
  
-  def saveReports(dir:File,result:ElectionResultReport) {
+  def saveReports(dir:File,result:ElectionResultReport,data:ElectionData) {
     dir.mkdirs()
     createCSS(dir)
     val overall = generateOverallReport(result,result.candidates,result.quota)
     scala.xml.XML.save(new File(dir,"About.html").toString, overall)
     for ((step,count)<-result.possiblyStochasticHistory.zipWithIndex) {
       val humanCount = count+1
-      val xml = generateReportForASingleCount(step,humanCount,result.candidates)
+      val xml = generateReportForASingleCount(step,humanCount,data)
       scala.xml.XML.save(new File(dir,"count"+humanCount+".html").toString, xml,"UTF-8")
+    }
+    if (result.hasMarginInfo) {
+      scala.xml.XML.save(new File(dir,"marginsAllow1PrefsChanges.html").toString, generateMarginReport(data,result,false),"UTF-8")      
+      scala.xml.XML.save(new File(dir,"marginsNo1Prefs.html").toString, generateMarginReport(data,result,true),"UTF-8")      
     }
   }
   def blankIfZero(num:Double) = if (num==0) "" else stringOfVoteCount(num)
-  def stringOfVoteCount(num:Double) = if (num.toInt==num) num.toInt.toString else num.toString
+  def stringOfVoteCount(num:Double) = {
+    val eps = 1e-8
+    val intv = (num+eps*num.signum).toInt
+    if ((intv-num).abs<eps) intv.toString else num.toString
+  }
 
 }
 
-class ElectionProgressiveTotals(val excludedCandidates:Set[Int],val electedCandidates:Set[Int],val ineligibleCandidates:Set[Int],val exhausedVotes:Double,val votesSetAside:Double,tallys:Array[CandidateTally]) {
-  val votesPerCandidate : Array[Double] = tallys.map{_.numVotes}
+class ElectionProgressiveTotals(val excludedCandidates:Set[Int],val electedCandidates:Set[Int],val ineligibleCandidates:Set[Int],val exhausedVotes:Double,val exhaustedPapers:Double,val votesSetAside:Double,val lostDueToRounding:Double,tallys:Int=>Double,papers:Option[Int=>Int],papersATL:Option[Int=>Int],numCandidates:Int) {
+  val votesPerCandidate : Array[Double] = Array.tabulate(numCandidates)(tallys)
+  val papersPerCandidate : Option[Array[Int]] = papers.map{p=>Array.tabulate(numCandidates)(p)}
+  val papersPerCandidateATL : Option[Array[Int]] = papersATL.map{p=>Array.tabulate(numCandidates)(p)}
+  def continuingCandidates : Set[Int] = ((0 until numCandidates).toSet--excludedCandidates)--electedCandidates
 }
 
  /** historical information about a particular count step */
 class ElectionCountReport(val numCandidates:Int,val countType:CountReportType) {
   var start : ElectionProgressiveTotals = _
   var end : ElectionProgressiveTotals = _
+  def usePapers : Boolean = if (end!=null) end.papersPerCandidate.isDefined else if (start!=null) start.papersPerCandidate.isDefined else false
+  def roundingAtStart = if (start!=null) start.lostDueToRounding else 0.0
+  def roundingAtEnd = if (end!=null) end.lostDueToRounding else 0.0
+  def roundingTransferred = roundingAtEnd-roundingAtStart
+  def useRounding : Boolean = roundingAtEnd>0
+  def exhaustedPapersAtStart = if (start!=null) start.exhaustedPapers else 0.0
+  def exhaustedPapersAtEnd = if (end!=null) end.exhaustedPapers else 0.0
+  def exhaustedPapersTransferred = exhaustedPapersAtEnd-exhaustedPapersAtStart
   def totalAtStart(c:Int) = if (start==null) 0 else start.votesPerCandidate(c)
   def totalAtEnd(c:Int) = if (end==null) 0 else end.votesPerCandidate(c)
+  def papersAtStart(c:Int) = if (start==null || start.papersPerCandidate.isEmpty) 0 else start.papersPerCandidate.get(c)
+  def papersAtEnd(c:Int) = if (end==null || end.papersPerCandidate.isEmpty) 0 else end.papersPerCandidate.get(c)
+  def papersAtEndATL(c:Int) = if (end==null || end.papersPerCandidateATL.isEmpty) 0 else end.papersPerCandidateATL.get(c)
+  def papersTransferred(c:Int) = papersAtEnd(c)-papersAtStart(c)
   def ballotPapersTransferred(candidate:Int) = totalAtEnd(candidate)-totalAtStart(candidate) 
   val ballotPapersDistributed = new Array[Double](numCandidates)
   val electedCandidates = new ArrayBuffer[Int] // elected this round
@@ -155,10 +223,27 @@ class ElectionCountReport(val numCandidates:Int,val countType:CountReportType) {
   def string_ballotPapersSetAside(c:Int) : String = stringOfVoteCount(ballotPapersSetAside(c))
   def string_exhaustedAtStart : String = stringOfVoteCount(start.exhausedVotes)
   def string_exhaustedAtEnd : String = stringOfVoteCount(end.exhausedVotes)
+  def string_exhaustedPapersAtStart : String = stringOfVoteCount(exhaustedPapersAtStart)
+  def string_exhaustedPapersAtEnd : String = stringOfVoteCount(exhaustedPapersAtEnd)
+  def string_exhaustedPapersTransferred = blankIfZero(exhaustedPapersTransferred)
   def string_exhaustedDistributed = blankIfZero(countType.numExhaustedDistributed)
   def string_exhaustedTransferred = blankIfZero(countType.numExhaustedThatWouldBeCarriedOn)
   def string_exhaustedSetAside = blankIfZero(countType.numExhaustedSetAside)
+  def string_roundingAtStart : String = stringOfVoteCount(roundingAtStart)
+  def string_roundingAtEnd : String = stringOfVoteCount(roundingAtEnd)
+  def string_roundingTransferred = blankIfZero(roundingTransferred)
   def string_setAsidePrior = stringOfVoteCount(countType.setAsidePrior)
+  def string_papersAtEnd(c:Int) : String = stringOfVoteCount(papersAtEnd(c))
+  def string_papersAtEndATL(c:Int) : String = papersAtEndATL(c).toString
+  def string_papersAtEndBTL(c:Int) : String = (papersAtEnd(c)-papersAtEndATL(c)).toString
+  def string_papersAtStart(c:Int) : String = stringOfVoteCount(papersAtStart(c))
+  def string_papersTransferred(c:Int) : String = stringOfVoteCount(papersTransferred(c))
+  
+  var equalCandidatesDisabiguatedByEC : Set[Set[Int]] = Set.empty
+  def addECDecision(equalCandidates:Set[Int]) {
+    equalCandidatesDisabiguatedByEC+=equalCandidates
+  }
+
 }
 
 class NumberDistributionPerCandidate(val numCandidates:Int) {
@@ -232,7 +317,7 @@ class ElectionCountReportStochasticSummary(base:ElectionCountReport,candidates:A
 abstract class CountReportType(val name:String,val useStartCounts:Boolean,val useDistributed:Boolean,val useTransferred:Boolean,val useSetAside:Boolean) {
   def heading(candidates:Array[Candidate]):String
   def candidateDistributed:Int= -1
-  def candidateEliminated:Int = -1
+  def candidatesEliminated : List[Int] = List.empty
   def numExhaustedThatWouldBeCarriedOn = 0.0
   def numExhaustedSetAside = 0.0
   def setAsidePrior = 0.0
@@ -240,11 +325,17 @@ abstract class CountReportType(val name:String,val useStartCounts:Boolean,val us
   /** A string that defines the structure... if two values have the same value of this, then the same people do the same things, but the counts may be different */
   def structureDesc(candidates:Array[Candidate],ignoreWhoIsEliminatedForMergingIntoStochasticReport:Boolean) : String
 }
-class CountReportTypeElimination(override val candidateEliminated:Int,votes:Double,val margin:Double) extends CountReportType("Eliminated",true,false,true,false) {
+class CountReportTypeElimination(candidateEliminated:Int,votes:Double,val margin:Double) extends CountReportType("Eliminated",true,false,true,false) {
    def heading(candidates:Array[Candidate]) = "Eliminated candidate "+candidates(candidateEliminated).name+" with "+ElectionReport.stringOfVoteCount(votes)+" votes losing by a margin of "+ElectionReport.stringOfVoteCount(margin)
+   override def candidatesEliminated = List(candidateEliminated)
    override def structureDesc(candidates:Array[Candidate],ignoreWhoIsEliminatedForMergingIntoStochasticReport:Boolean) = "Eliminated candidate "+(if (ignoreWhoIsEliminatedForMergingIntoStochasticReport) "" else candidates(candidateEliminated).name)
 }
-class CountReportTypeExcessDistribution(override val candidateDistributed:Int,val votes:Double,totalTransferred:Double,transferValue:Double,val numVotesToBeRedistributed:Double,override val numExhaustedSetAside:Double,override val numExhaustedThatWouldBeCarriedOn:Double,override val setAsidePrior:Double) extends CountReportType("Distributed Excess",true,true,true,true) {
+class CountReportTypeEliminationSet(override val candidatesEliminated:List[Int],fromCounts:List[Int],transferValue:Double) extends CountReportType("Eliminated",true,false,true,false) {
+   def heading(candidates:Array[Candidate]) = "Eliminated "+candidatesEliminated.map{candidates(_).name}.mkString(",")+" transfer value "+transferValue+" with votes from counts "+fromCounts.mkString(",")
+   override def structureDesc(candidates:Array[Candidate],ignoreWhoIsEliminatedForMergingIntoStochasticReport:Boolean) = "Eliminated candidate "+(if (ignoreWhoIsEliminatedForMergingIntoStochasticReport) "" else candidatesEliminated.map{candidates(_).name}.mkString(","))
+}
+
+class CountReportTypeExcessDistribution(override val candidateDistributed:Int,val votes:Double,totalTransferred:Double,transferValue:Double,val numVotesToBeRedistributed:Double,override val numExhaustedSetAside:Double,override val numExhaustedThatWouldBeCarriedOn:Double,override val setAsidePrior:Double,distributedMakesSense:Boolean) extends CountReportType("Distributed Excess",true,distributedMakesSense,true,distributedMakesSense) {
    def heading(candidates:Array[Candidate]) = "Distributed "+ElectionReport.stringOfVoteCount(votes)+" excess votes for candidate "+candidates(candidateDistributed).name+", transfer value "+votes+"/("+numVotesToBeRedistributed+"-"+numExhaustedSetAside+")="+transferValue
    override def structureDesc(candidates:Array[Candidate],ignoreWhoIsEliminatedForMergingIntoStochasticReport:Boolean) = "Distributed excess votes for candidate "+candidates(candidateDistributed).name
 }
@@ -253,17 +344,25 @@ class CountReportTypeFirstCount() extends CountReportType("First Count",false,fa
    override def structureDesc(candidates:Array[Candidate],ignoreWhoIsEliminatedForMergingIntoStochasticReport:Boolean) = "First Count"
 }
 
+class Recipient(val who:Int,val votes:Int) {
+  def desc(candidates:Array[Candidate]) : String = candidates(who).name+"\u2192"+votes  // \u2192 is right arrow
+}
+class Margin(val votes:Int,val papers:Int,val step:Int,recipients:Array[Recipient]) {
+  def how(candidates:Array[Candidate]) : String = recipients.map{_.desc(candidates)}.mkString(" , ")
+}
 
-
-class ElectionResultReport(val candidates:Array[Candidate],tallys:Array[CandidateTally],val ineligibleCandidates:Set[Int]) {
+class ElectionResultReport(val candidates:Array[Candidate],val ineligibleCandidates:Set[Int]) { 
    def numCandidates = candidates.length
    val history = new ArrayBuffer[ElectionCountReport]
    def currentCount = history.last
    val electedCandidates = new ArrayBuffer[Int]
+   val marginsNoRestrictions : Array[Option[Margin]] = Array.fill(candidates.length)(None)
+   val marginsTamperable : Array[Option[Margin]] = Array.fill(candidates.length)(None) //margins where you can't change first pref votes below or above line
    var excludedCandidates :Set[Int] = Set.empty
    var electedCandidatesSet :Set[Int] = Set.empty
-   var countCount =1
    var progressiveTotalOfExhaustedVotes=0.0
+   var progressiveTotalOfExhaustedPapers=0.0
+   var progressiveTotalOfLostDueToRounding=0.0
    var progressiveTotalOfSetasideVotes=0.0
    var quota = 0
    def setQuota(actualQuota:Int) { quota=actualQuota }
@@ -272,7 +371,19 @@ class ElectionResultReport(val candidates:Array[Candidate],tallys:Array[Candidat
     currentCount.electedCandidates+=candidateID
     //println("Elected candidate "+candidates(candidateID).name+"   as "+reason)
    }
-  
+   def addECDecision(equalCandidates:Set[Int]) {
+     println("Count "+history.length+" EC had to decide among "+(for (c<-equalCandidates.toList.sorted) yield candidates(c).name+" ("+c+") ").mkString(","))
+     currentCount.addECDecision(equalCandidates)
+   }
+   var tallys:Int=>Double=_
+   var papers:Option[Int=>Int]=None
+   var papersATL:Option[Int=>Int]=None
+   /** Must be called before anything else */
+   def setTallyFunction(f:Int=>Double) { tallys=f }
+   /** May be called to distinguish papers (physical votes) from tallys (which may be weighted) */
+   def setPapersFunction(total:Int=>Int,atl:Int=>Int) { papers=Some(total); papersATL=Some(atl) }
+   /** May (and should be) called at the end of the counting to release references to functions provided above to save memory */
+   def freeReferencesWhenAllDone() { tallys=null; papers=None; papersATL=None }
    var numStochastic = 0
    val historyStochastic = new ArrayBuffer[ElectionCountReportStochasticSummary]
    def isStochasticIgnoreWhoIsEliminatedForMergingIntoStochasticReport = (!historyStochastic.isEmpty) && historyStochastic.head.ignoreWhoIsEliminatedForMergingIntoStochasticReport
@@ -287,7 +398,13 @@ class ElectionResultReport(val candidates:Array[Candidate],tallys:Array[Candidat
    }
    def possiblyStochasticHistory:Array[ElectionCountReport] = if (historyStochastic.isEmpty) history.toArray else historyStochastic.toArray
 
-       
+   def margins(requireTamperable:Boolean) = if (requireTamperable) marginsTamperable else marginsNoRestrictions
+   
+   def addMarginInfo(candidate:Int,marginVotes:Int,marginPapers:Int,recipients:Array[Recipient],requireTamperable:Boolean) {
+     val shouldOverwrite = margins(requireTamperable)(candidate).map{_.papers>marginPapers}.getOrElse(true)
+     if (shouldOverwrite) margins(requireTamperable)(candidate)=Some(new Margin(marginVotes,marginPapers,history.length+1,recipients))
+   }
+   def hasMarginInfo :Boolean = marginsNoRestrictions.exists { _.isDefined }    
   def note(s:String)  { 
     // println(s)
   }
@@ -295,21 +412,35 @@ class ElectionResultReport(val candidates:Array[Candidate],tallys:Array[Candidat
     progressiveTotalOfExhaustedVotes+=count
     // println(s"$count exhausted votes")
   }
+  def addExhaustedPapers(count:Double) {
+    progressiveTotalOfExhaustedPapers+=count
+    // println(s"$count exhausted votes")
+  }
+  def addLostDueToRounding(count:Double) {
+    progressiveTotalOfLostDueToRounding+=count
+    // println(s"$count exhausted votes")
+  }
   def declareCandidateExcluded(candidateID:Int,margin:Double) {
     //println("Excluded candidate "+candidates(candidateID).name)
-    history+=new ElectionCountReport(numCandidates,new CountReportTypeElimination(candidateID,tallys(candidateID).numVotes,margin)) 
+    history+=new ElectionCountReport(numCandidates,new CountReportTypeElimination(candidateID,tallys(candidateID),margin)) 
     startCount()
     excludedCandidates+=candidateID
   }
-  def declareCandidateDistributed(candidateID:Int,surplusVotes:Double,totalTransferred:Double,transferValue:Double,distribution:List[VotesToBeTransferred],numVotesToBeRedistributed:Double,numExhaustedSetAside:Double,numExhaustedThatWouldBeCarriedOn:Double) {
+  def declareCandidatesExcluded(candidateIDs:List[Int],fromCounts:List[Int],transferValue:Double) {
+    //println("Excluded candidate "+candidates(candidateID).name)
+    history+=new ElectionCountReport(numCandidates,new CountReportTypeEliminationSet(candidateIDs,fromCounts,transferValue)) 
+    startCount()
+    excludedCandidates++=candidateIDs
+  }
+  def declareCandidateDistributed(candidateID:Int,surplusVotes:Double,totalTransferred:Double,transferValue:Double,distribution:List[VotesToBeTransferred],numVotesToBeRedistributed:Double,numExhaustedSetAside:Double,numExhaustedThatWouldBeCarriedOn:Double,distributedMakesSense:Boolean) {
     // println("Distributed candidate "+candidates(candidateID).name)
-    val setAsidePrior = tallys(candidateID).numVotes-numVotesToBeRedistributed
-    history+=new ElectionCountReport(numCandidates,new CountReportTypeExcessDistribution(candidateID,surplusVotes,totalTransferred,transferValue,numVotesToBeRedistributed,numExhaustedSetAside,numExhaustedThatWouldBeCarriedOn,setAsidePrior)) 
+    val setAsidePrior = tallys(candidateID)-numVotesToBeRedistributed
+    history+=new ElectionCountReport(numCandidates,new CountReportTypeExcessDistribution(candidateID,surplusVotes,totalTransferred,transferValue,numVotesToBeRedistributed,numExhaustedSetAside,numExhaustedThatWouldBeCarriedOn,setAsidePrior,distributedMakesSense)) 
     startCount()
     electedCandidatesSet+=candidateID
     currentCount.setTransferred(distribution)
   }
-  def getElectionProgressiveTotals = new ElectionProgressiveTotals(excludedCandidates,electedCandidatesSet,ineligibleCandidates,progressiveTotalOfExhaustedVotes,progressiveTotalOfSetasideVotes,tallys) 
+  def getElectionProgressiveTotals = new ElectionProgressiveTotals(excludedCandidates,electedCandidatesSet,ineligibleCandidates,progressiveTotalOfExhaustedVotes,progressiveTotalOfExhaustedPapers,progressiveTotalOfSetasideVotes,progressiveTotalOfLostDueToRounding,tallys,papers,papersATL,numCandidates) 
   def finishCount() {
     currentCount.setCountsEnd(getElectionProgressiveTotals)
   }

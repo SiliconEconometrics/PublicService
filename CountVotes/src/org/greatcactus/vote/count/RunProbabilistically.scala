@@ -91,7 +91,7 @@ object ProbabilisticWork {
          for (report<-stochasticReports.values.toList.sortBy { - _.numStochastic}) {
            val subdir = new File(dir,count.toString)
            count+=1
-           ElectionReport.saveReports(subdir,report)
+           ElectionReport.saveReports(subdir,report,votedata)
          }
        case None => // do nothing
      }

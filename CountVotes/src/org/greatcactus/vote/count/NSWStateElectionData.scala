@@ -56,37 +56,10 @@ object NSWStateElectionData {
   
   def load(useIvote:Boolean,useNormal:Boolean) : ElectionData = try { loadPickled(useIvote,useNormal) } catch { case e:Exception => e.printStackTrace(); println("Loading manually"); val res = loadRaw(useIvote:Boolean,useNormal:Boolean); savePickled(res,useIvote:Boolean,useNormal:Boolean); res }
   def savePickled(data:ElectionData,useIvote:Boolean,useNormal:Boolean) {
-    val file = fastfile(useIvote:Boolean,useNormal:Boolean)
-    file.getParentFile.mkdirs()
-    val w = new PrintWriter(new FileWriter(file))
-    def go[T <: Dumpable](a:Array[T]) {
-      w.println(a.length)
-      for (e<-a) w.println(e.line)
-    }
-    go(data.candidates)
-    go(data.satls)
-    go(data.ratls)
-    go(data.btls)
-    w.close()  
+    ElectionDataFastIO.savePickled(data, fastfile(useIvote:Boolean,useNormal:Boolean))
   }
-  
   def loadPickled(useIvote:Boolean,useNormal:Boolean) : ElectionData = {
-    val r = new BufferedReader(new FileReader(fastfile(useIvote:Boolean,useNormal:Boolean)))
-    //val pickle = BinaryPickle(is)
-    import scala.reflect._
-    def read[T](f:String=>T)(implicit tag : ClassTag[T]) : Array[T] = {
-      val len = r.readLine().toInt
-      val res = new Array[T](len)
-      for (i<-0 until len) res(i)=f(r.readLine())
-      res
-    }
-    val candidates = read[Candidate]{s=>val ss = s.split('\t'); new Candidate(ss(0),ss(1),ss(2).toInt)}
-    val satls = read[SATL]{s=>val ss=s.split('\t'); new SATL(ss(0).charAt(0),ss(1).toInt)}
-    val ratls = read[ATL]{s=>val ss=s.split('\t'); new ATL(ss(0).toCharArray(),ss(1).toInt)}
-    val btls = read[BTL]{s=>new BTL(s.split(',').map{_.toInt})}
-    val res = new ElectionData("NSW",candidates,satls,ratls,btls) //  pickle.unpickle[ElectionData]
-    r.close()
-    res
+    ElectionDataFastIO.loadPickled(fastfile(useIvote:Boolean,useNormal:Boolean))
   }
     
   def loadRaw(useIvote:Boolean,useNormal:Boolean) : ElectionData = {
@@ -98,7 +71,7 @@ object NSWStateElectionData {
     val r = new BufferedReader(new InputStreamReader(is))
     var line : String = r.readLine();
     val candidates = new scala.collection.mutable.HashMap[String,Candidate]
-    val helper = new VoteInterpreter(groups,numCandidates,numGroups)
+    val helper = new VoteInterpreter(groups.toCharArray().map{c=>new GroupInformation(c.toString,c.toString,Array())},numCandidates)
     try { while (line!=null) {
         val fields = line.split('\t')
         if (fields.length!=12) {
@@ -115,7 +88,7 @@ object NSWStateElectionData {
           if (if (isIvote) useIvote else useNormal) fields(11) match {
             case "BTL" => helper.addBTL(ballotID, candidate, preferenceNumber)
             case "SATL" => helper.addSATL(groupIndex(fields(8).charAt(0))) 
-            case "RATL" => helper.addRATL(ballotID, fields(8).charAt(0), preferenceNumber)
+            case "RATL" => helper.addRATL(ballotID, fields(8), preferenceNumber)
           } else { if (fields(11)=="BTL") candidate() }
         }
         line=r.readLine();  

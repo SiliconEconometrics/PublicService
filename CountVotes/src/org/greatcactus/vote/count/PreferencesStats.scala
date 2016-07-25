@@ -33,7 +33,7 @@ object PreferencesStats extends App {
     var exhausted = 0
     val prefTo = new Array[Int](data.candidates.length)
     println("Loaded data")
-    val votes = data.makeVotes
+    val votes = data.makeVotes()
     println("Got votes")
     for (v<-votes) {
       val sub = v.preferences.filter { careAbout }

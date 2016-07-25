@@ -33,22 +33,30 @@ object RunElection extends App {
   val random = new Random
   val worker = new NSWElectionHelper(rawstats,21,random,NSWLegislativeCouncilRules,Set.empty)
   worker.run()
-  ElectionReport.saveReports(new java.io.File(NSWStateElectionData.reportDir,"Single Run"+(if (useIvote) " iVote" else "")+(if (useNormal) " Normal" else "")),worker.report)
+  ElectionReport.saveReports(new java.io.File(NSWStateElectionData.reportDir,"Single Run"+(if (useIvote) " iVote" else "")+(if (useNormal) " Normal" else "")),worker.report,rawstats)
   //println("\n\nIVOTE\n")
   //val ivote = LoadFromFile.load(true)
   //ivote.printStatus()
 }
 
-/** A partially distributed vote. Ignore votes before upto. Really the most important data structure in the program. */
-class DVote(val upto:Int,val numVoters:Double,val prefs:Array[Int]) {
+ 
+/** 
+ * A partially distributed vote. Ignore votes before upto. Really the most important data structure in the program.
+ * prefs[i] is the candidate given the i-th preference (starting counting from zero).
+ * numVoters is the number who cast this vote (identical votes are conflated).
+ * upto indicates which preference we are up to on this vote given its past distributions. 
+ * src is where this vote came from (SATL,RATL,BTL, etc)
+ **/
+class DVote(val upto:Int,val numVoters:Double,val prefs:Array[Int],val src:VoteSource) {
   def current : Int = prefs(upto)
-  def next : DVote = new DVote(upto+1,numVoters,prefs)
+  def next : DVote = new DVote(upto+1,numVoters,prefs,src)
   def isExhausted : Boolean = upto==prefs.length
   def skipNotContinuingCandidates(continuingCandidates:Set[Int]) : DVote = {
     if (isExhausted || continuingCandidates(current)) this
     else next.skipNotContinuingCandidates(continuingCandidates)
   }
-  def applyTransferValue(transferValue:Double) : DVote = new DVote(upto,numVoters*transferValue,prefs)
+  def applyTransferValue(transferValue:Double) : DVote = new DVote(upto,numVoters*transferValue,prefs,src)
+  override def toString = numVoters.toString+"* "+prefs.drop(upto).mkString(",")
 }
 
 class CandidateTally(val candidateID:Int
@@ -95,7 +103,8 @@ object NSWLocalGovernmentBuggyElectionRules extends ElectionRules(true,true,true
 class NSWElectionHelper(data:ElectionData,candidatesToBeElected:Int,random:Random,electionRules:ElectionRules,val ineligibleCandidates:Set[Int]) {
   val numCandidates = data.candidates.length
   val tallys = Array.tabulate(numCandidates){new CandidateTally(_)}
-  val report = new ElectionResultReport(data.candidates,tallys,ineligibleCandidates)
+  val report = new ElectionResultReport(data.candidates,ineligibleCandidates)
+  report.setTallyFunction {i=>tallys(i).numVotes}
   def numElectedCandidates = report.electedCandidates.length
   def emptySeats = candidatesToBeElected-numElectedCandidates
     
@@ -108,7 +117,7 @@ class NSWElectionHelper(data:ElectionData,candidatesToBeElected:Int,random:Rando
   }
   
   {
-    val votes : Array[DVote] = for (v<-data.makeVotes) yield new DVote(0,v.numVoters,v.preferences).skipNotContinuingCandidates(continuingCandidates)
+    val votes : Array[DVote] = for (v<-data.makeVotes()) yield new DVote(0,v.numVoters,v.preferences,v.src).skipNotContinuingCandidates(continuingCandidates)
     // 1. assign first preference votes
     for (v<-votes) {
       if (v.isExhausted) report.addExhaustedVotes(v.numVoters)
@@ -123,8 +132,13 @@ class NSWElectionHelper(data:ElectionData,candidatesToBeElected:Int,random:Rando
   report.note(s"Formal votes : $formalVotes  Candidates to be elected : $candidatesToBeElected   Quota : $quota")
   
   report.initialCountDone()
+  
+  def run() {
+    runToCompletion()
+    report.freeReferencesWhenAllDone()
+  }
   // 
-  def run() { while (true) {
+  def runToCompletion() { while (true) {
    
     // 4. Has any candidate reached the quota?
     val candidatesWithQuota = continuingCandidates.filter { i => tallys(i).numVotes>=quota }
@@ -241,7 +255,7 @@ class NSWElectionHelper(data:ElectionData,candidatesToBeElected:Int,random:Rando
       // println("transferValue="+transferValue+" surplus="+candidateToDistribute.surplusVotes+" transferred="+totalTransferred+" distributed="+numDistributed+" numExhausted="+numExhausted+" numExhaustedThatWouldBeCarriedOn="+numExhaustedThatWouldBeCarriedOn)
       if (Math.abs(numExhausted-numExhaustedThatWouldBeCarriedOn)>1e-6) throw new Exception
       // Step 21 
-      report.declareCandidateDistributed(candidateToDistribute.candidateID,candidateToDistribute.surplusVotes,totalTransferred,transferValue,sortedRecipients,numVotesToBeRedistributed,numExhaustedSetAside,numExhaustedThatWouldBeCarriedOn)
+      report.declareCandidateDistributed(candidateToDistribute.candidateID,candidateToDistribute.surplusVotes,totalTransferred,transferValue,sortedRecipients,numVotesToBeRedistributed,numExhaustedSetAside,numExhaustedThatWouldBeCarriedOn,true)
       report.addExhaustedVotes(numExhaustedThatWouldBeCarriedOn)
       candidateToDistribute.numVotes = quota
       for (r<-sortedRecipients) {
@@ -329,7 +343,7 @@ class VotesToBeTransferred(val candidateID:Int,val votes:Array[DVote],transferVa
           if (chosen(upto)) passedOn+=1
           upto+=1
         }
-        if (passedOn>0) res+= (if (passedOn==v.numVoters) v else new DVote(v.upto,passedOn,v.prefs))
+        if (passedOn>0) res+= (if (passedOn==v.numVoters) v else new DVote(v.upto,passedOn,v.prefs,v.src))
       }
       res.toArray
       //Array.fill(intVotesToBeTransferred)(votes(random.nextInt(votes.length))) // Possible bug simulation

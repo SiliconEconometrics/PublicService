@@ -53,7 +53,7 @@ object NSWLocal2012IO {
         orderedCandidates+=candidate
       }
       // process votes - interpret all as below the line as that's what is in the data file.
-      val helper = new VoteInterpreter("",orderedCandidates.length,0)
+      val helper = new VoteInterpreter(Array(),orderedCandidates.length)
       for (l<-lines("PREFERENCES").tail) {
         val ll = l.split('\t')
         if (ll.length!=6) throw new Exception("Do not understand candidate line "+l)
