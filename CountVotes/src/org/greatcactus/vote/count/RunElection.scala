@@ -22,6 +22,8 @@ package org.greatcactus.vote.count
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
+import java.io.PrintWriter
+import java.io.FileWriter
 
 object RunElection extends App {
 
@@ -57,6 +59,16 @@ class DVote(val upto:Int,val numVoters:Double,val prefs:Array[Int],val src:VoteS
   }
   def applyTransferValue(transferValue:Double) : DVote = new DVote(upto,numVoters*transferValue,prefs,src)
   override def toString = numVoters.toString+"* "+prefs.drop(upto).mkString(",")
+  def toMichelleFormat = "("+prefs.mkString(",")+"):"+numVoters.toInt
+}
+
+object DVote {
+  def saveMichelleFormat(file:java.io.File,votes:Seq[DVote]) {
+    file.getParentFile().mkdirs()
+    val pw = new PrintWriter(new FileWriter(file))
+    for (v<-votes) pw.println(v.toMichelleFormat)
+    pw.close()
+  }
 }
 
 class CandidateTally(val candidateID:Int
@@ -103,7 +115,7 @@ object NSWLocalGovernmentBuggyElectionRules extends ElectionRules(true,true,true
 class NSWElectionHelper(data:ElectionData,candidatesToBeElected:Int,random:Random,electionRules:ElectionRules,val ineligibleCandidates:Set[Int]) {
   val numCandidates = data.candidates.length
   val tallys = Array.tabulate(numCandidates){new CandidateTally(_)}
-  val report = new ElectionResultReport(data.candidates,ineligibleCandidates)
+  val report = new ElectionResultReport(data.candidates,ineligibleCandidates,true)
   report.setTallyFunction {i=>tallys(i).numVotes}
   def numElectedCandidates = report.electedCandidates.length
   def emptySeats = candidatesToBeElected-numElectedCandidates

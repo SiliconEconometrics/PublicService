@@ -4,6 +4,7 @@ import scala.collection.immutable.Queue
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.GenTraversableOnce
 import java.util.Arrays
+import scala.collection.mutable.ListBuffer
 
 object FederalSenateCount2013App extends App {
 
@@ -25,7 +26,8 @@ object FederalSenateCount2016App extends App {
   
   
   //run("VIC",12,DeducedAEC2016Orders.vic)
-  run("NT",2,DeducedAEC2016Orders.nt,false)
+  //run("NT",2,DeducedAEC2016Orders.nt,false)
+  run("TAS",12,DeducedAEC2016Orders.tas)
 }
 
 //tiebreaking orders, deduced from tie resolutions in actual AEC count.
@@ -86,6 +88,17 @@ object CheckEffectOfOddVotersForTickets {
   }
 }
 
+class WhatMarginInformationToCompute(
+    /** Whether we should try to compute any information at all */ val wantAnyMarginInfo:Boolean,
+    /** Whether we should try to compute exclusion information for specific votes and rerun */ val shouldIncludeSpecificVotes:Boolean,
+    /** Whether we should try to compute exclusion information for specific candidates */ val candidatesToTryToExclude : Option[Set[CandidateIndex]],
+    /** Whether we should try the time intensive binary-search-on-rerun optimization */ val shouldOptimizeBinarySearchRerunElection : Boolean
+    )
+    
+object WhatMarginInformationToCompute {
+  val none = new WhatMarginInformationToCompute(false,false,None,false)
+  val simpleRerun = new WhatMarginInformationToCompute(true,true,None,false)
+}
 
 object FederalSenateCount {
   type CandidateIndex = Int
@@ -93,17 +106,26 @@ object FederalSenateCount {
   type TransferValue = Double
   type Tally = Int
   
+  val defaultMarginInformation = WhatMarginInformationToCompute.simpleRerun // slows it down a lot
+  val whenRerunningModifiedElectionsDoForAllCandidatesNotJustElectedOnes = false // slows it down even more
+  val doMarginOptimization = true // really slows it down
+  
   def run(year:String,rawvotes:ElectionData,state:String,toBeElected:Int,aecDeemedOrder:Seq[Int],ticketRoundingChoices:Map[String,Int],/** For double dissolution, use to determine which senators get 6 years */ secondRoundNumElected:Option[Int]=None) {
     val reportDir = new java.io.File("Federal"+year+"Reports/"+state)
     rawvotes.printStatus()
-    val worker = new FederalSenateCountHelper(rawvotes,toBeElected,ticketRoundingChoices,aecDeemedOrder)
+    val mainMarginInfo = if (doMarginOptimization) {
+      val preworker = new FederalSenateCountHelper(rawvotes,toBeElected,ticketRoundingChoices,aecDeemedOrder,WhatMarginInformationToCompute.none,false)
+      preworker.run()
+      new WhatMarginInformationToCompute(true,true,Some(preworker.report.electedCandidates.toSet),true)
+    } else defaultMarginInformation
+    val worker = new FederalSenateCountHelper(rawvotes,toBeElected,ticketRoundingChoices,aecDeemedOrder,mainMarginInfo,true)
     worker.run()
     ElectionReport.saveReports(reportDir,worker.report,rawvotes)
     for (secondRound<-secondRoundNumElected) {
-      val worker2a = new FederalSenateCountHelper(rawvotes,secondRound,ticketRoundingChoices,aecDeemedOrder)
+      val worker2a = new FederalSenateCountHelper(rawvotes,secondRound,ticketRoundingChoices,aecDeemedOrder,defaultMarginInformation,true)
       worker2a.run()
       ElectionReport.saveReports(new java.io.File(reportDir,"Electing"+secondRound),worker2a.report,rawvotes)
-      val worker2b = new FederalSenateCountHelper(rawvotes,secondRound,ticketRoundingChoices,aecDeemedOrder,(0 until rawvotes.numCandidates).toSet--worker.report.electedCandidates)
+      val worker2b = new FederalSenateCountHelper(rawvotes,secondRound,ticketRoundingChoices,aecDeemedOrder,defaultMarginInformation,true,(0 until rawvotes.numCandidates).toSet--worker.report.electedCandidates)
       worker2b.run()
       ElectionReport.saveReports(new java.io.File(reportDir,"Electing"+secondRound+"OutOf"+toBeElected),worker2b.report,rawvotes)
     }
@@ -158,19 +180,23 @@ class PlainVotes {
   }
   def whereCameFrom : List[CountNumber] = countsOriginating.toList.sorted
   def getRoundedTally = roundedTally
+  
   /** Number that are hard to detect tampering with at this point - eg first preference, 1 ATL */
-  def numDeepIntoPreferences(owningCandidatePositionInParty:Int) : Int = {
+  def numTamperablePapers(owningCandidatePositionInParty:Int) : Int = {
     var res = 0
     for (v<-allVotes) {
-      val isTamperable = (v.upto!=0) /* first preference */ && (v.src match { // not first preference
-         case _:BTL => true
-         case _:SATL => false
-         case a:ATL => v.upto != owningCandidatePositionInParty // not the first ATL preference        
-      })
+      val isTamperable = (v.upto!=0) /* first preference */ && v.src.isTamperable(v.upto == owningCandidatePositionInParty)
       if (isTamperable) res+=v.numVoters.toInt
     }
     res
   }
+  def saveMichelleFormat(file:java.io.File) { DVote.saveMichelleFormat(file, allVotes) }
+  def getActualListOfTamperableVotes(owningCandidatePositionInParty:Int) : ActualListOfTamperableVotes = {
+    val okvotes  = allVotes.filter({v=>(v.upto!=0) /* first preference */ && v.src.isTamperable(v.upto == owningCandidatePositionInParty)})
+    new ActualListOfTamperableVotes(okvotes.map{_.src}(collection.breakOut),Nil)
+  }
+  def getActualListOfAllVotes : ActualListOfTamperableVotes = new ActualListOfTamperableVotes(allVotes.map{_.src}(collection.breakOut),Nil)
+  def papersLostToRounding(tv:TransferValue) = Math.floor(tv*numBallots).toInt-getRoundedTally
 }
 class WeightedVotes {
   private val map = new collection.mutable.HashMap[TransferValue,PlainVotes]
@@ -200,22 +226,33 @@ class WeightedVotes {
   def sortedByWeight : List[(TransferValue,PlainVotes)] = map.toList.sortBy{- _._1}
   def removeTransferValue(tv:TransferValue) { map-=tv }
   def clear() { map.clear() }
+  /*
   /** Minimum number of papers one needs to generate a given number of votes. Use higher transfer values first. Doesn't perfectly deal with rounding. */
   def numPapersToGenerateVotes(wantedVotes:Tally,requireTamperable:Boolean,owningCandidatePositionInParty:Int) : Option[Int] = {
     var togo = wantedVotes
     var res = 0
     for ((tv,pv)<-sortedByWeight) {
         if (togo>0) {
-          val available = if (requireTamperable) pv.numDeepIntoPreferences(owningCandidatePositionInParty) else  pv.numBallots
+          val available = if (requireTamperable) pv.numTamperablePapers(owningCandidatePositionInParty) else  pv.numBallots
           val used = ((togo/tv).ceil min available).toInt
           togo-=(used*tv).floor.toInt
           res+=used
         }
     }
     if (togo==0) Some(res) else None
-  }
+  }*/
+  def getTamperableVotes(owningCandidatePositionInParty:Int,wantActualVotes:Boolean) : List[TamperableVotes] = (for ((tv,votes)<-map) yield new TamperableVotes(tv,votes.numTamperablePapers(owningCandidatePositionInParty),if (wantActualVotes) Some(votes.getActualListOfTamperableVotes(owningCandidatePositionInParty)) else None,votes.papersLostToRounding(tv))).toList.sortBy { - _.tv }
+  def getTamperableVotesConsideringEverythingTamperable(wantActualVotes:Boolean) : List[TamperableVotes] = (for ((tv,votes)<-map) yield new TamperableVotes(tv,votes.numBallots,if (wantActualVotes) Some(votes.getActualListOfAllVotes) else None,votes.papersLostToRounding(tv))).toList.sortBy { - _.tv }
 }
 
+
+class TamperableVotes(val tv:Double,val papers:Int,val src:Option[ActualListOfTamperableVotes],val maxPapersLostToRounding:Int) {
+  val votes:Tally = (Math.floor(tv*papers).toInt-maxPapersLostToRounding) max 0
+  def scaleVotesBackTo(wantedVotes:Int) = {
+    val newPapers = Math.ceil(wantedVotes/tv).toInt
+    new TamperableVotes(tv,newPapers,src.map{_.split(newPapers)._1},maxPapersLostToRounding)
+  }
+}
 
 /** aecDeemedPreferences is the order in which the AEC should resolve ties... first means going higher in orders. Only needs to contain actually used ones. */
 class ContinuingCandidates(aecDeemedOrder:Seq[Int],val numCandidates:Int) {
@@ -255,7 +292,7 @@ class ContinuingCandidates(aecDeemedOrder:Seq[Int],val numCandidates:Int) {
  * Do the work of counting for the federal senate, based on 
  * http://www.austlii.edu.au/au/legis/cth/consol_act/cea1918233/s273.html
  */
-class FederalSenateCountHelper(val data:ElectionData,candidatesToBeElected:Int,ticketRoundingChoices:Map[String,Int],aecDeemedOrder:Seq[Int],ineligibleCandidates:Set[Int]=Set.empty) {
+class FederalSenateCountHelper(val data:ElectionData,candidatesToBeElected:Int,ticketRoundingChoices:Map[String,Int],aecDeemedOrder:Seq[Int],val marginOptions:WhatMarginInformationToCompute,val printDebugMessages:Boolean,ineligibleCandidates:Set[Int]=Set.empty) {
   val numCandidates : Int = data.candidates.length
   val continuingCandidates : ContinuingCandidates = new ContinuingCandidates(aecDeemedOrder,numCandidates)
   continuingCandidates--=ineligibleCandidates
@@ -265,6 +302,7 @@ class FederalSenateCountHelper(val data:ElectionData,candidatesToBeElected:Int,t
   // Step (8), distribute votes to first preferences, and determine quota
   val originalVotes : PlainVotes = {
     val votes : Array[DVote] = for (v<-data.makeVotes(ticketRoundingChoices)) yield new DVote(0,v.numVoters,v.preferences,v.src).skipNotContinuingCandidates(continuingCandidates.set)
+    DVote.saveMichelleFormat(new java.io.File("Michele/"+data.name+".txt"),votes)
     val res = new PlainVotes
     res.add(votes)
     res
@@ -272,7 +310,7 @@ class FederalSenateCountHelper(val data:ElectionData,candidatesToBeElected:Int,t
   val ballots : Array[WeightedVotes] = originalVotes.splitByNextContinuing(continuingCandidates)._1.map{pv=>{val res = new WeightedVotes; res.add(pv,1.0,1,pv.numBallots);res }}
   val tallys : Array[Tally] = ballots.map{_.numBallots}
   val firstPreferences : Array[Tally] = Arrays.copyOf(tallys,tallys.length)
-  val report = new ElectionResultReport(data.candidates,ineligibleCandidates)
+  val report = new ElectionResultReport(data.candidates,ineligibleCandidates,printDebugMessages)
   report.setTallyFunction{i=>tallys(i)}
   report.setPapersFunction({i=>ballots(i).numBallots},{i=>ballots(i).numBallotsATL})
   
@@ -303,7 +341,10 @@ class FederalSenateCountHelper(val data:ElectionData,candidatesToBeElected:Int,t
     // (18)  Notwithstanding any other provision of this section, where the number of continuing candidates is equal to the number of remaining unfilled vacancies, those candidates shall be elected.
     if (continuingCandidates.length==remainingVacancies) for (c<-continuingCandidates.orderedList) declareElected(c,"Remaining")
     //  (17)  In respect of the last vacancy for which two continuing candidates remain, the continuing candidate who has the larger number of votes shall be elected notwithstanding that that number is below the quota, and if those candidates have an equal number of votes the Australian Electoral Officer for the State shall have a casting vote but shall not otherwise vote at the election.
-    if (continuingCandidates.length==2 && remainingVacancies==1 && candidatesToHaveSurplusDistributed.isEmpty) declareElected(continuingCandidates.head,"Highest of remaining 2")
+    if (continuingCandidates.length==2 && remainingVacancies==1 && candidatesToHaveSurplusDistributed.isEmpty) {
+      val _ = candidatesForExclusionWithMarginComputation // run for side effect of computing margins
+      declareElected(continuingCandidates.head,"Highest of remaining 2")
+    }
     // note if you don't have the candidatesToHaveSurplusDistributed.isEmpty you can get different results. This may be a bug in the legislation.
     for (c<-continuingCandidates.orderedList) {
       if (tallys(c)>=quota) {
@@ -392,9 +433,22 @@ class FederalSenateCountHelper(val data:ElectionData,candidatesToBeElected:Int,t
          notionalVotes(c)=last
        }
     }
+    val debugMultipleExclusion : Boolean = false // isReal && report.history.size==9
+    // if (isReal) println("Count "+report.history.size+" debugMultipleExclusion="+debugMultipleExclusion)
+    
     val vacancyShortFall = computeVacancyShortfall(orderedCandidates)
      // 13(A) (a)  a continuing candidate (in this subsection called Candidate A ) shall be identified, if possible, who, of the continuing candidates who each have a number of notional votes equal to or greater than the vacancy shortfall, stands lower or lowest in the poll;
-     // val candidateA : Option[CandidateIndex] = reverseOrder.find { notionalVotes(_)>vacancyShortFall }
+    if (debugMultipleExclusion) {
+      for (i<-0 until (reverseOrder.length min 100)) {
+        val c = reverseOrder(i)
+        println(data.candidates(c).name+"\t notional votes "+notionalVotes(c)) 
+      }
+      println("Vacancy Shortfall "+vacancyShortFall)
+      println("Leading Shortfall "+leadingShortfall(orderedCandidates))
+      val candidateA : Option[CandidateIndex] = reverseOrder.find { notionalVotes(_)>vacancyShortFall }
+      for (a<-candidateA) println("Candidate A "+data.candidates(a).name)
+      
+    }
      
     val candidateBOpt : Option[CandidateIndex] = {
        // (i)  stands lower in the poll than Candidate A, or if Candidate A cannot be identified, has a number of notional votes that is fewer than the vacancy shortfall;
@@ -409,6 +463,9 @@ class FederalSenateCountHelper(val data:ElectionData,candidatesToBeElected:Int,t
        val resIndex = (1 until ordered.length).find{satisfiesBoth}
        resIndex.map{ordered}
     }
+    if (debugMultipleExclusion) {
+       for (b<-candidateBOpt) println("Candidate B "+data.candidates(b).name)
+    }
     // println(orderedCandidates)
     val toExclude13A : List[CandidateIndex] = candidateBOpt match {
       case Some(candidateB) if notionalVotes(candidateB)<leadingShortfall(orderedCandidates) => // 13(A) (c)  in a case where Candidate B has been identified and has a number of notional votes fewer than the leading shortfall--Candidate B and any other continuing candidates who stand lower in the poll than that candidate may be excluded in a bulk exclusion; and
@@ -420,10 +477,14 @@ class FederalSenateCountHelper(val data:ElectionData,candidatesToBeElected:Int,t
      //     opt.getOrElse(throw new Exception("Legislation requires candidate C to exist"))
           opt
         }
+        if (debugMultipleExclusion) {
+          for (c<-candidateCopt) println("Candidate C "+data.candidates(c).name)
+        }
+
         candidateCopt match {
           case Some(candidateC) => orderedCandidates.dropWhile { _ != candidateC } // continuingCandidates.candidateAndLower(candidateC) //  (ii)  Candidate C and all other continuing candidates who stand lower in the poll than that candidate may be excluded in a bulk exclusion.
           case None =>
-            if (isReal) println("Legislation [s273, 13(A)(d)(i)] requires candidate C to exist, but it does not in count "+currentCountNumber+". Candidate B is "+data.candidates(candidateB).name)
+            if (isReal && printDebugMessages) println("Legislation [s273, 13(A)(d)(i)] requires candidate C to exist, but it does not in count "+currentCountNumber+". Candidate B is "+data.candidates(candidateB).name)
             List(reverseOrder.head)
         }
       case None => List(reverseOrder.head) // lowest candidate, 13(a)
@@ -433,26 +494,87 @@ class FederalSenateCountHelper(val data:ElectionData,candidatesToBeElected:Int,t
     if (toExclude13A.length>maxExcludable) toExclude13A.takeRight(maxExcludable) else toExclude13A
   }
   def candidatesForExclusionWithMarginComputation : List[CandidateIndex] = {
-    val continuingLowToHigh = continuingCandidates.orderedList.reverse.toArray
     val excludeList = candidatesForExclusion(continuingCandidates.orderedList,true)
-    // compute margin info
-    val excludeCutoff = excludeList.map{tallys(_)}.max
-    for (c<-continuingCandidates.orderedList) if (!excludeList.contains(c)) {
-      def isExcluded(votesLost:Int) : Boolean = { // see if candidate c is excluded if s/he loses votesLost votes.
-        //println(s"trying to exclude $votesLost for candidate $c tally "+tallys(c))
-        val recipients = computeRecipients(votesLost)
-        // change universe to have candidate c lose votesLost votes
-        tallys(c)-=votesLost
-        for (recipient<-recipients) tallys(recipient.who)+=recipient.votes
-        val newOrdered = continuingCandidates.orderedList.sortBy { -tallys(_) } // TODO propagate changes backwards - tie resolution for c not handled fully yet
-        val nowExcluded = candidatesForExclusion(newOrdered,false)
-        //println("Ordered : "+newOrdered+" nowExcluded="+nowExcluded.mkString(",")); Thread.sleep(300)
-        // unchange universe
-        tallys(c)+=votesLost
-        for (recipient<-recipients) tallys(recipient.who)-=recipient.votes
-        nowExcluded.contains(c)
+    if (marginOptions.wantAnyMarginInfo) new TamperingMarginCalculation(this,excludeList,marginOptions) // do tampering computation
+    excludeList    
+  }
+  def distributeOrExclude() {
+    if (candidatesToHaveSurplusDistributed.isEmpty) excludeCandidates(candidatesForExclusionWithMarginComputation)
+    else transferExcess(candidatesToHaveSurplusDistributed.dequeue())
+  }
+  
+  /** Do tampers and rerun */
+  def rerunModifiedVersions() { 
+      for (candidate<-0 until numCandidates;margin<-report.marginsTamperable(candidate)) if (whenRerunningModifiedElectionsDoForAllCandidatesNotJustElectedOnes || report.electedCandidates.contains(candidate)) {
+        val modifiedElected = rerunElectionModifiedData(margin,"",true,true)
+        val originalElected = report.electedCandidates.toList
+        report.addMarginTamperableEffectInfo(candidate,new ElectionChanged(originalElected,modifiedElected))
       }
-      def computeRecipients(votesLost:Int) : Array[Recipient] = { // work out who gets the votes
+  }
+
+  /** Rerun the election, with some changes specified by margin. Return the candidates elected. */
+  def rerunElectionModifiedData(margin:Margin,name:String,saveReports:Boolean,saveDatafile:Boolean) : List[CandidateIndex] = {
+        val newdata = data.tamper(margin,"_tamper_exclude_"+name)
+        val newworker = new FederalSenateCountHelper(newdata,candidatesToBeElected,ticketRoundingChoices,aecDeemedOrder,WhatMarginInformationToCompute.none,false,ineligibleCandidates)
+        newworker.run()
+        val dir = new java.io.File("TamperReports/"+newdata.name)
+        if (saveReports) ElectionReport.saveReports(dir,newworker.report,newdata)
+        if (saveDatafile) ElectionDataFastIO.savePickled(newdata,new java.io.File(dir,newdata.name+".txt"))   
+        newworker.report.electedCandidates.toList
+  }
+  
+  def run() {
+    while (remainingVacancies>0) distributeOrExclude()  
+    report.freeReferencesWhenAllDone()
+    if (printDebugMessages) CheckEffectOfOddVotersForTickets.check(data, report)
+    if (marginOptions.shouldIncludeSpecificVotes)  rerunModifiedVersions()
+  }
+  
+  
+}
+
+/**
+ * Nothing to do with the count directly, but compute some margin information 
+ */
+class TamperingMarginCalculation(val helper:FederalSenateCountHelper,excludeList:List[CandidateIndex],val marginOptions:WhatMarginInformationToCompute) {
+  def tallys = helper.tallys
+  def ballots = helper.ballots
+  def continuingCandidates = helper.continuingCandidates
+  def report = helper.report
+  val data = helper.data
+  
+  val continuingLowToHigh = continuingCandidates.orderedList.reverse.toArray
+    // compute margin info
+  val excludeCutoff = excludeList.map{tallys(_)}.max
+    for (c<-continuingCandidates.orderedList) if (marginOptions.candidatesToTryToExclude.map{_.contains(c)}.getOrElse(true) && !excludeList.contains(c)) processCandidate(c)
+
+
+  /** Generalization of getVotes that gets the specific papers involved in providing needed votes from the start of the surplusVotesAvailable list */
+          def getTransfers(surplusVotesAvailable:List[(CandidateIndex,TamperableVotes)],neededVotes:List[(CandidateIndex,Tally)]) : List[TamperedVote] = neededVotes match {
+            case Nil => Nil // all done
+            case (candidateNeedingVotes,numberVotesNeeded)::nt =>
+              if (surplusVotesAvailable.isEmpty) throw new CannotFindTamperableVotesException
+              val (surplusWho,surplus) = surplusVotesAvailable.head
+              val willGiveVotes = surplus.votes min (numberVotesNeeded)
+              val willGivePapers = Math.ceil((willGiveVotes+surplus.maxPapersLostToRounding)/surplus.tv).toInt
+              val (actualVotesWillGivePapers:List[ActualListOfTamperableVotes],remainingActualVotes:List[ActualListOfTamperableVotes]) = surplus.src.map{_.split(willGivePapers)}.unzip // really option, not list.
+              val tampering = new TamperedVote(surplusWho,candidateNeedingVotes,willGivePapers,willGiveVotes,actualVotesWillGivePapers.headOption)
+              val remainingNeeded = numberVotesNeeded-willGiveVotes
+              val newNeeded = if (remainingNeeded==0) nt else (candidateNeedingVotes,remainingNeeded)::nt
+              val remainingAvailable = new TamperableVotes(surplus.tv,surplus.papers-willGivePapers,remainingActualVotes.headOption,surplus.maxPapersLostToRounding)
+              val newAvailable = if (remainingAvailable.votes>0) (surplusWho,remainingAvailable)::surplusVotesAvailable.tail else surplusVotesAvailable.tail
+              tampering::getTransfers(newAvailable,newNeeded)
+          }
+  
+  def name(index:CandidateIndex) = helper.data.candidates(index).name
+  
+  def processCandidate(c:CandidateIndex) {
+      val takeFromCtamperable = ballots(c).getTamperableVotes(data.candidates(c).position-1,marginOptions.shouldIncludeSpecificVotes)
+      val availableFromCtamperable = for (tamperable<-takeFromCtamperable if tamperable.votes>0) yield (c,tamperable)
+      val takeFromCAll = ballots(c).getTamperableVotesConsideringEverythingTamperable(false)
+      val availableFromCAll = for (tamperable<-takeFromCAll if tamperable.votes>0) yield (c,tamperable)
+
+      def computeRecipients(votesLost:Int) : Array[TamperedVoteNoPapers] = { // work out who gets the votes
         val votesGivenTo : Array[Int] = new Array[Int](continuingLowToHigh.length) // votes given to candidate by index position 
         var numGivenTo = 0 // number of candidates given votes
         var togo = votesLost
@@ -470,31 +592,92 @@ class FederalSenateCountHelper(val data:ElectionData,candidatesToBeElected:Int,t
           if (giveEach<toCatchUp) // distribute remaining lot, weakest candidate first
             for (i<-0 until togo) give(i,1)          
         }
-        val result = for (i<-0 until numGivenTo if votesGivenTo(i)>0) yield new Recipient(continuingLowToHigh(i),votesGivenTo(i))
+        val result = for (i<-0 until numGivenTo if votesGivenTo(i)>0) yield new TamperedVoteNoPapers(c,continuingLowToHigh(i),votesGivenTo(i))
         result.toArray
       }
+      def isExcluded(votesLost:Int) : Boolean = { // see if candidate c is excluded if s/he loses votesLost votes.
+        //println(s"trying to exclude $votesLost for candidate $c tally "+tallys(c))
+        val recipients = computeRecipients(votesLost)
+        // change universe to have candidate c lose votesLost votes
+        helper.tallys(c)-=votesLost
+        for (recipient<-recipients) helper.tallys(recipient.candidateTo)+=recipient.numVotes
+        val newOrdered = continuingCandidates.orderedList.sortBy { -helper.tallys(_) } 
+        val nowExcluded = helper.candidatesForExclusion(newOrdered,false)
+        //println("Ordered : "+newOrdered+" nowExcluded="+nowExcluded.mkString(",")); Thread.sleep(300)
+        // unchange universe
+        helper.tallys(c)+=votesLost
+        for (recipient<-recipients) helper.tallys(recipient.candidateTo)-=recipient.numVotes
+        nowExcluded.contains(c)
+      }
+      def computeRecipientsDetailed(votesLost:Int,requireTamperable:Boolean) : Array[TamperedVote] = {
+        val fudgeFactorForRoundingWhenDeterminingTamperMargins = if (marginOptions.shouldOptimizeBinarySearchRerunElection && requireTamperable) 20 else 0 // edit this by hand if needed.
+        val surplusVotesAvailable:List[(CandidateIndex,TamperableVotes)] = if (requireTamperable) availableFromCtamperable else availableFromCAll
+        val neededVotes:List[(CandidateIndex,Tally)] = computeRecipients(votesLost+fudgeFactorForRoundingWhenDeterminingTamperMargins).map{tvnp=>(tvnp.candidateTo,tvnp.numVotes)}.toList
+        val neededVoteeOptimized = if (requireTamperable)binarySearchOptimizeVotesNeeded(surplusVotesAvailable,neededVotes)  else neededVotes 
+        val res = getTransfers(surplusVotesAvailable,neededVoteeOptimized)
+        res.toArray
+      }
+      /** Optimize votesNeededByLowerThanCToPassC by binary searching on lower values and rerunning the election to see if it works. Returns optimized list */
+      def binarySearchOptimizeVotesNeeded(surplusVotesAvailable:List[(CandidateIndex,TamperableVotes)],votesNeededByLowerThanCToPassC : List[(CandidateIndex,Tally)]) : List[(CandidateIndex,Tally)]= {
+        if (marginOptions.shouldOptimizeBinarySearchRerunElection && votesNeededByLowerThanCToPassC.length<4 ) { // for each candidate, work out the minimum number of votes needed by binary search on a rerun election.
+            def works(baseVotesNeeded:List[(CandidateIndex,Tally)],changingCandidate:CandidateIndex)(changeTo:Int) : Boolean = {
+              println("Trying to change candidate "+name(changingCandidate)+" to "+changeTo+" to try to exclude "+name(c))
+              try {
+                 val transfers = getTransfers(surplusVotesAvailable,baseVotesNeeded.map{case (who,howmany) => if (who==changingCandidate) (who,changeTo) else (who,howmany)})
+                 val margin = new Margin(helper.report.history.length+1,transfers.toArray)
+                 val newWinners = helper.rerunElectionModifiedData(margin, "", false, false)
+                 !newWinners.contains(c)
+              } catch { case _:CannotFindTamperableVotesException => false }
+            }
+            var votesNeeded = votesNeededByLowerThanCToPassC
+            for (_<- 1 to 2) { // may improve with 2 passes
+              for ((changingCandidate,currentNeeded)<-votesNeeded) {
+                val actuallyNeeded = BinarySearch.findLowest(works(votesNeeded,changingCandidate),0,currentNeeded)
+                votesNeeded=votesNeeded.map{case (who,howmany) => if (who==changingCandidate) (who,actuallyNeeded) else (who,howmany)}
+              }      
+            }
+            votesNeeded
+        } else votesNeededByLowerThanCToPassC
+      }
       val margin = BinarySearch.findLowest(isExcluded,0,tallys(c)-tallys(continuingLowToHigh(0))+1)
-      for (papers<-ballots(c).numPapersToGenerateVotes(margin,false,data.candidates(c).position-1))
-        report.addMarginInfo(c,margin,papers,computeRecipients(margin),false)
-      for (papers<-ballots(c).numPapersToGenerateVotes(margin,true,data.candidates(c).position-1))
-        report.addMarginInfo(c,margin,papers,computeRecipients(margin),true)
+      //for (papers<-ballots(c).numPapersToGenerateVotes(margin,false,data.candidates(c).position-1)) 
+      try { // try tampering that would be easily detected
+        report.addMarginInfo(c,computeRecipientsDetailed(margin,false),false)
+      } catch { case _:CannotFindTamperableVotesException => println("Did not expect to fail at finding tamperable votes when all tamperable. May be a very rare rounding artifact") }
+      try { // try tampering that would be hard to detect
+        report.addMarginInfo(c,computeRecipientsDetailed(margin,true),true)
+      } catch { case _:CannotFindTamperableVotesException =>  // try a less efficient method - give away all the votes you can, and then take the remainder from elsewhere.
+          val fudgeFactorForRoundingWhenDeterminingTamperMargins = if (marginOptions.shouldOptimizeBinarySearchRerunElection) 20 else 0 // edit this by hand if needed.
+          val tallyToMoveEveryoneElseTo : Tally = tallys(c)-takeFromCtamperable.map{_.votes}.sum+fudgeFactorForRoundingWhenDeterminingTamperMargins+1 
+          // now need to make everyone else continuing >=tallyToMoveEveryoneElseTo.
+          val surplusVotes : List[(CandidateIndex,Tally)] = continuingCandidates.orderedList.filter{_ != c}.map{nc=>(nc,tallys(nc)-tallyToMoveEveryoneElseTo)}
+          val availableFromOthers : List[(CandidateIndex,TamperableVotes)] = surplusVotes.flatMap{
+            case (who,surplus) if surplus>fudgeFactorForRoundingWhenDeterminingTamperMargins =>
+              val untruncated = ballots(who).getTamperableVotes(data.candidates(who).position-1,marginOptions.shouldIncludeSpecificVotes)
+              val buffer = new collection.mutable.ListBuffer[TamperableVotes]
+              var remainingSurplus = surplus-fudgeFactorForRoundingWhenDeterminingTamperMargins
+              for (t<-untruncated) if (remainingSurplus>0) {
+                val nt = if (remainingSurplus>=t.votes) t else t.scaleVotesBackTo(remainingSurplus)
+                remainingSurplus-=nt.votes
+                if (nt.votes>0) buffer+=nt
+              }
+              for (tamperable<-buffer.toList) yield (who,tamperable)
+            case _ => Nil
+          }
+          val availableFromOthersSorted = availableFromOthers.sortBy(- _._2.tv)
+          val votesNeededByLowerThanCToPassC : List[(CandidateIndex,Tally)]  = surplusVotes.filter{_._2<0}.map{pair=>(pair._1,-pair._2)}
+          val allVotesAvailable = availableFromCtamperable++availableFromOthersSorted
+          val votesNeededOptimized = binarySearchOptimizeVotesNeeded(allVotesAvailable,votesNeededByLowerThanCToPassC)
+          try {
+              val transfers = getTransfers(allVotesAvailable,votesNeededOptimized)
+              report.addMarginInfo(c,transfers.toArray,true)
+          } catch { case _:CannotFindTamperableVotesException => }
+      }
     }
-    excludeList    
-  }
-  def distributeOrExclude() {
-    if (candidatesToHaveSurplusDistributed.isEmpty) excludeCandidates(candidatesForExclusionWithMarginComputation)
-    else transferExcess(candidatesToHaveSurplusDistributed.dequeue())
-  }
-  
-  def run() {
-    while (remainingVacancies>0) distributeOrExclude()  
-    report.freeReferencesWhenAllDone()
-    CheckEffectOfOddVotersForTickets.check(data, report)
-  }
-  
-  
-  
 }
+class CannotFindTamperableVotesException extends Exception
+class TamperedVoteNoPapers(val candidateFrom:CandidateIndex,val candidateTo:CandidateIndex,val numVotes:Tally)
+
 
 object BinarySearch {
   /** Find the lowest integer in the inclusive range low...high that satisfies p. E.g if p is _>5, this would return 6. Assumes p is monotonic */

@@ -66,8 +66,8 @@ sealed class ElectionData(
     val groups : Map[String,Array[Int]] = Map.empty++ (for ((group,l)<-candidates.zipWithIndex.groupBy{ _._1.group }) yield (group,l.map{_._2}.toList.sorted.toArray))
     for (satlNo<-0 until satls.length) {
       val s=satls(satlNo) 
-      if (usesGroupVotingTickets) {
-        if (s.numVoters>0) {
+      if (s.numVoters>0) {
+        if (usesGroupVotingTickets) {
           val gi : GroupInformation = groupInverse(s.group)
           val numTickets = gi.tickets.length
           if (numTickets==0) throw new IllegalArgumentException("Group "+s.group+" has no tickets")
@@ -82,8 +82,8 @@ sealed class ElectionData(
                         else 0
             res+=new Vote(gi.tickets(i),portion+extra,s)
           }
-        }
-      } else res+=new Vote(groups(s.group),s.numVoters,s)
+        } else res+=new Vote(groups(s.group),s.numVoters,s)
+      } 
     }
     for (s<-ratls) res+=new Vote(s.groups.flatMap{c=>groups(c.toString)},s.numVoters,s)
     for (b<-btls) res+=new Vote(b.candidates,1,b)
@@ -95,6 +95,32 @@ sealed class ElectionData(
   /** Same data, should produce same results, but with the id numbers of the candidates reversed. Used for testing... if it doesn't produce the same results, something is wrong. */
   def reverseCandidateOrder : ElectionData = {
     new ElectionData(name,candidates.reverse,groupInfo,satls,ratls,btls.map{btl => new BTL(btl.candidates.map{numCandidates-1-_})})
+  }
+  
+  /** Apply a tampering to this dataset */
+  def tamper(tampering:Margin,tamperName:String) : ElectionData = {
+    var excludeVotes : Set[VoteSource] = Set.empty
+    var partialExcludeVotes : Map[VoteSource,Int] = Map.empty
+    val addVotes = new ArrayBuffer[VoteSource]
+    
+    def process[T <: VoteSourceSubsettable[T] : ClassTag](invotes:Array[T]) : Array[T] = {
+      val doneFullExclude : Array[T] = invotes.filter{v => !excludeVotes.contains(v)}
+      val donePartialExclude : Array[T] =  for (v <-doneFullExclude) yield partialExcludeVotes.get(v) match { case Some(n)=> v.subset(v.n-n); case None => v}
+      val addT : Array[T] = addVotes.toArray.collect{case v:T => v}
+      donePartialExclude++addT
+    }
+    
+    for (t<-tampering.tamperings;src<-t.src) {
+      for (v<-src.allused) {
+        excludeVotes+=v
+        addVotes+=v.swap(t.whoFrom,candidates(t.whoFrom),t.whoTo,candidates(t.whoTo))
+      }
+      for ((n,v)<-src.partiallyUsed) {
+        partialExcludeVotes+=v->(partialExcludeVotes.getOrElse(v,0)+n)
+        addVotes+=v.swap(t.whoFrom,candidates(t.whoFrom),t.whoTo,candidates(t.whoTo)).subset(n)
+      }
+    } 
+    new ElectionData(name+"_"+tamperName,candidates,groupInfo,process(satls),process(ratls),process(btls))
   }
 }
 
@@ -162,23 +188,72 @@ class Vote(/** ordered list of candidates */ val preferences:Array[Int],val numV
 
 trait VoteSource {
   def isATL : Boolean
+  /** True if it is possible for the vote to be tampered with without easy detection, assuming it is not the first preference */
+  def isTamperable(/** True if the position being considered for modification is plausibly in the first group of a RATL vote */ couldBeInFirstGroup:Boolean) : Boolean
+  /** The number of votes here */
+  def n:Int
+  def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate) : VoteSourceSubsettable[VoteSource]
 }
 
-sealed class SATL(val group:String,val numVoters:Int) extends Dumpable with VoteSource {
+trait VoteSourceSubsettable[+T] extends VoteSource {
+  def subset(n:Int) : T
+}
+sealed class SATL(val group:String,val numVoters:Int) extends Dumpable with VoteSourceSubsettable[SATL] {
   def line = ""+group+"\t"+numVoters
   override def isATL = true
+  override def isTamperable(couldBeInFirstGroup:Boolean) = false
+  override def n = numVoters
+  override def subset(n:Int) = new SATL(group,n)
+  override def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate) = new SATL(candidateTo.group,numVoters) // not perfect, but as good as likely to get.
 }
 
-sealed class ATL(/** groups listed in preference order */ val groups:Array[String],val numVoters:Int) extends Dumpable with VoteSource {
+sealed class ATL(/** groups listed in preference order */ val groups:Array[String],val numVoters:Int) extends Dumpable with VoteSourceSubsettable[ATL] {
   def line = groups.mkString(" ")+"\t"+numVoters
   override def isATL = true
+  override def isTamperable(couldBeInFirstGroup:Boolean) = false // TODO make better !couldBeInFirstGroup
+  override def n = numVoters
+  override def subset(n:Int) = new ATL(groups,n)
+  override def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate) = ??? // need to make sure destination is top of chart. new ATL(groups.map{c => if (c==candidateFrom.group) candidateTo.group else if (c==candidateTo.group) candidateFrom.group else c},numVoters)
 } 
 
-sealed class BTL(/** candidate ids listed in preference order */ val candidates:Array[Int]) extends Dumpable with VoteSource {
+sealed class BTL(/** candidate ids listed in preference order */ val candidates:Array[Int]) extends Dumpable with VoteSourceSubsettable[BTL] {
   def line = candidates.mkString(",")
   override def isATL = false
+  override def isTamperable(couldBeInFirstGroup:Boolean) = true
+  override def n = 1
+  override def subset(n:Int) = new BTL(candidates)
+  override def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate) = new BTL(candidates.map{c => if (c==fromWho) toWho else if (c==toWho) fromWho else c})
 }
 
+class ActualListOfTamperableVotes(val allused:Array[VoteSource],val partiallyUsed:List[(Int,VoteSource)]) {
+  /** Split into a list of length n and a list of all others */
+  def split(n:Int) : (ActualListOfTamperableVotes,ActualListOfTamperableVotes) = {
+    var togo = n
+    val buffer1 = new ArrayBuffer[VoteSource]
+    val buffer2 = new ArrayBuffer[VoteSource]
+    val partial1 = new ListBuffer[(Int,VoteSource)]
+    val partial2 = new ListBuffer[(Int,VoteSource)]
+    for (v<-allused) {
+      if (togo==0) buffer2+=v
+      else if (togo>=v.n) { buffer1+=v; togo-=v.n }
+      else {
+        partial1+= ((togo,v))
+        partial2+= ((v.n-togo,v))
+        togo=0
+      }
+    }
+    for (v<-partiallyUsed) {
+      if (togo==0) partial2+=v
+      else if (togo>=v._1) { partial1+=v; togo-=v._1 }
+      else {
+        partial1+= ((togo,v._2))
+        partial2+= ((v._1-togo,v._2))
+        togo=0
+      }   
+    }
+    (new ActualListOfTamperableVotes(buffer1.toArray,partial1.toList),new ActualListOfTamperableVotes(buffer2.toArray,partial2.toList))
+  }
+}
 
 
 

@@ -8,6 +8,8 @@ table {
 td, th {
   border: 1px solid transparent; /* No more visible border */
   height: 30px;
+  border-left-width : 0.5em;
+  border-right-width : 0.5em;
   transition: all 0.3s;  /* Simple transition for hover effect */
 }
 
@@ -27,3 +29,11 @@ tr.Striped:nth-child(even) td { background: #F1F1F1; }
 
 /* Cells in odd rows (1,3,5...) are another (excludes header cells)  */
 tr.Candidate:nth-child(odd) td { background: #FEFEFE; } 
+
+tr.Exhausted { background : #EEFFEE; border-top:2px solid black }
+tr.SetAside{ background : #EEFFEE; } 
+tr.Rounding{ background : #EEFFEE; } 
+
+td.papers { color : #888; }
+td.groupname { color : #666; }
+td p { margin-bottom : 3px; margin-top : 3px; }

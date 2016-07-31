@@ -24,6 +24,7 @@ import scala.collection.mutable.ArrayBuffer
 import java.io.PrintWriter
 import java.io.File
 import java.io.FileOutputStream
+import scala.collection.mutable.ListBuffer
 
 
 object ElectionReport {
@@ -32,10 +33,38 @@ object ElectionReport {
     IOUtil.copyFile(new File("report.css"),new File(dir,"report.css"))
   }
   
-  def generateReportForASingleCount(step:ElectionCountReport,number:Int,data:ElectionData) = {
+  class DetailedReportHelper(data:ElectionData,report:ElectionResultReport,val useStartCounts:Boolean,val useDistributed:Boolean,val useTransferred:Boolean,val useSetAside:Boolean,val usePapers:Boolean,val usesNames:Boolean,val usesCount:Boolean) {
+    val candidates = data.candidates
+    // val usePapers = 
+    
+    def heading =  
+      <tr class="Head">{if (usesNames) <td>Group</td><td>Candidate</td>}{if (usesCount) <td>Count</td>}{if (useStartCounts) <td>Start Votes</td>} {if (useStartCounts&&usePapers) <td>Start Papers</td>}{if (useDistributed) <td>Distributed</td>}{if (useTransferred) <td>Transferred</td>} {if (useTransferred&&usePapers) <td>Transferred Papers</td>}{if (useSetAside) <td>Set Aside</td>}{if (usePapers) <td>Papers</td>}<td>Progressive Total</td></tr>
+
+    var lastgroup = "***"
+    
+    def bodyRow(step:ElectionCountReport,countNumber:Int,/** Candidate number */ i:Int) = {
+               val c = candidates(i)
+               def isElected = if (step.end.electedCandidates.contains(i)) Some("Elected") else None
+               def isExcluded = if (step.start!=null && step.start.excludedCandidates.contains(i) && step.start.votesPerCandidate(i)==0.0) Some("Excluded") else None
+               val isExcludedEnd = if (step.end.excludedCandidates.contains(i)) Some("Excluded") else None
+               val isIneligible = if (step.end.ineligibleCandidates.contains(i)) Some("Ineligible") else None
+               def startOverride : Option[String] = isExcluded orElse isIneligible
+               def middleOverride : Option[String] = isElected orElse isExcluded orElse isIneligible
+               val endOverride : Option[String] = isExcludedEnd orElse isIneligible
+               val r2 = <tr class="Striped">{if (usesNames) <td></td><td>{c.name}</td>}{if (usesCount) <td>{countNumber}</td>}{if (useStartCounts) <td>{startOverride getOrElse step.string_totalAtStart(i)}</td>} {if (useStartCounts&&usePapers) <td class="papers">{step.string_papersAtStart(i)}</td>}{if (useDistributed) <td>{middleOverride getOrElse step.string_ballotPapersDistributed(i)}</td>}{if (useTransferred) <td>{middleOverride getOrElse step.string_ballotPapersTransferred(i)}</td>}{if (useTransferred&&usePapers) <td class="papers">{step.string_papersTransferred(i)}</td>}{if (useSetAside) <td>{middleOverride getOrElse step.string_ballotPapersSetAside(i)}</td>}{if (usePapers) <td class="papers" title={step.string_papersAtEndATL(i)+" ATL, "+step.string_papersAtEndBTL(i)+" BTL"}>{step.string_papersAtEnd(i)}</td>}<td>{endOverride getOrElse step.string_totalAtEnd(i)}</td></tr>
+               if (c.group!=lastgroup && usesNames) {
+                 lastgroup=c.group
+                 val r1 = <tr class="Group"><td>{c.group}</td><td class="groupname">{data.groupNameFromID(c.group)}</td>{if (useStartCounts) <td></td>}{if (useStartCounts&&usePapers) <td></td>}{if (useDistributed) <td></td>}{if (useTransferred) <td></td>}{if (useTransferred&&usePapers) <td></td>}{if (useSetAside) <td></td>}{if (usePapers) <td></td>}<td></td></tr>
+                 r1++r2
+               } else r2 
+     }
+  }
+  
+  def generateReportForASingleCount(step:ElectionCountReport,number:Int,data:ElectionData,report:ElectionResultReport) = {
     val candidates = data.candidates
     val t = step.countType
-    val usePapers = step.usePapers
+    val helper = new DetailedReportHelper(data,report,t.useStartCounts,t.useDistributed,t.useTransferred,t.useSetAside,step.usePapers,true,false)
+    val usePapers = helper.usePapers
     <html>
       <head>
         <meta charset="UTF-8"/> 
@@ -47,43 +76,17 @@ object ElectionReport {
         {for (e<-step.electedCandidates) yield <p>{candidates(e).name} elected</p>}
         {for (s<-step.equalCandidatesDisabiguatedByEC) yield <p>Election Commission needed to choose among equal candidates {for (c<-s.toList.sorted) yield candidates(c).name+" ("+c+") "} </p>}        
         <table class="Display">
-           <tr class="Head"><td>Group</td><td>Candidate</td>{if (t.useStartCounts) <td>Start Votes</td>} {if (t.useStartCounts&&usePapers) <td>Start Papers</td>}{if (t.useDistributed) <td>Distributed</td>}{if (t.useTransferred) <td>Transferred</td>} {if (t.useTransferred&&usePapers) <td>Transferred Papers</td>}{if (t.useSetAside) <td>Set Aside</td>}{if (usePapers) <td>Papers</td>}<td>Progressive Total</td></tr>
+           { helper.heading }
            {
-             var lastgroup = "***"
-             for (i<-0 until candidates.length) yield {
-               val c = candidates(i)
-               def isElected = if (step.end.electedCandidates.contains(i)) Some("Elected") else None
-               def isExcluded = if (step.start.excludedCandidates.contains(i) && step.start.votesPerCandidate(i)==0.0) Some("Excluded") else None
-               val isExcludedEnd = if (step.end.excludedCandidates.contains(i)) Some("Excluded") else None
-               val isIneligible = if (step.end.ineligibleCandidates.contains(i)) Some("Ineligible") else None
-               def startOverride : Option[String] = isExcluded orElse isIneligible
-               def middleOverride : Option[String] = isElected orElse isExcluded orElse isIneligible
-               val endOverride : Option[String] = isExcludedEnd orElse isIneligible
-               val r2 = <tr class="Striped"><td></td><td>{c.name}</td>{if (t.useStartCounts) <td>{startOverride getOrElse step.string_totalAtStart(i)}</td>} {if (t.useStartCounts&&usePapers) <td class="papers">{step.string_papersAtStart(i)}</td>}{if (t.useDistributed) <td>{middleOverride getOrElse step.string_ballotPapersDistributed(i)}</td>}{if (t.useTransferred) <td>{middleOverride getOrElse step.string_ballotPapersTransferred(i)}</td>}{if (t.useTransferred&&usePapers) <td class="papers">{step.string_papersTransferred(i)}</td>}{if (t.useSetAside) <td>{middleOverride getOrElse step.string_ballotPapersSetAside(i)}</td>}{if (usePapers) <td class="papers" title={step.string_papersAtEndATL(i)+" ATL, "+step.string_papersAtEndBTL(i)+" BTL"}>{step.string_papersAtEnd(i)}</td>}<td>{endOverride getOrElse step.string_totalAtEnd(i)}</td></tr>
-               if (c.group!=lastgroup) {
-                 lastgroup=c.group
-                 val r1 = <tr class="Group"><td>{c.group}</td><td class="groupname">{data.groupNameFromID(c.group)}</td>{if (t.useStartCounts) <td></td>}{if (t.useStartCounts&&usePapers) <td></td>}{if (t.useDistributed) <td></td>}{if (t.useTransferred) <td></td>}{if (t.useTransferred&&usePapers) <td></td>}{if (t.useSetAside) <td></td>}{if (usePapers) <td></td>}<td></td></tr>
-                 r1++r2
-               } else r2 
-             }
+             for (i<-0 until candidates.length) yield helper.bodyRow(step,number, i)
            }
            {
-             /*
-             def blankIfZero(num:Int) = if (num==0) "" else num.toString
-             val (dist,trans,quota) = step.countType match {
-               case excess:CountReportTypeExcessDistribution => (blankIfZero(excess.numExhaustedSetAside+excess.numExhaustedThatWouldBeCarriedOn),blankIfZero(excess.numExhaustedThatWouldBeCarriedOn),blankIfZero(excess.numExhaustedSetAside))
-               case _ => ("","","")
-             }*/
              <tr class="Exhausted"><td></td><td>Exhausted</td>{if (t.useStartCounts) <td>{step.string_exhaustedAtStart}</td>}{if (t.useStartCounts&&usePapers) <td class="papers">{step.string_exhaustedPapersAtStart}</td>}{if (t.useDistributed) <td>{step.string_exhaustedDistributed}</td>}{if (t.useTransferred) <td>{step.string_exhaustedTransferred}</td>}{if (t.useTransferred&&usePapers) <td class="papers">{step.string_exhaustedPapersTransferred}</td>}{if (t.useSetAside) <td>{step.string_exhaustedSetAside}</td>}{if (usePapers) <td class="papers">{step.string_exhaustedPapersAtEnd}</td>}<td>{step.string_exhaustedAtEnd}</td></tr>
            }
            { if (step.useRounding) {
              <tr class="Rounding"><td></td><td>Rounding</td>{if (t.useStartCounts) <td>{step.string_roundingAtStart}</td>}{if (t.useStartCounts&&usePapers) <td></td>}{if (t.useDistributed) <td></td>}{if (t.useTransferred) <td>{step.string_roundingTransferred}</td>}{if (t.useTransferred&&usePapers) <td></td>}{if (t.useSetAside) <td></td>}{if (usePapers) <td></td>}<td>{step.string_roundingAtEnd}</td></tr>          
            }}
-           {/*
-             val setAsidePrior : Int = step.countType match {
-               case excess:CountReportTypeExcessDistribution => step.totalAtStart(excess.candidateDistributed)-excess.numVotesToBeRedistributed
-               case _ => 0
-             }*/
+           {
              if (step.countType.setAsidePrior>0) <tr class="SetAside"><td></td><td>Set Aside (previous counts)</td>{if (t.useStartCounts) <td></td>}{if (t.useStartCounts&&usePapers) <td></td>}{if (t.useDistributed) <td></td>}{if (t.useTransferred) <td></td>}{if (t.useTransferred&&usePapers) <td></td>}{if (t.useSetAside) <td>{step.string_setAsidePrior}</td>}{if (usePapers) <td></td>}<td></td></tr>
            }
         </table>
@@ -91,11 +94,38 @@ object ElectionReport {
     </html>
   }
   
+  def generateReportForASingleIndividual(candidateID:Int,data:ElectionData,report:ElectionResultReport) = {
+    def existsT(f:CountReportType=>Boolean) : Boolean = report.history.exists { step => f(step.countType) }
+    
+    val candidate = data.candidates(candidateID)
+    val helper = new DetailedReportHelper(data,report,existsT(_.useStartCounts),existsT(_.useDistributed),existsT(_.useTransferred),existsT(_.useSetAside),report.history.exists { _.usePapers },false,true)
+    val usePapers = helper.usePapers
+    <html>
+      <head>
+        <meta charset="UTF-8"/> 
+        <title>{candidate.name}</title>
+        <link href="report.css" type="text/css" rel="stylesheet"></link>
+      </head>
+      <body>
+        <p>Summary report for {candidate.name}</p>
+        <table class="Display">
+           { helper.heading }
+           {
+             for (stepID<-0 until report.history.length) yield helper.bodyRow(report.history(stepID),stepID+1, candidateID)
+           }
+        </table>
+      </body>
+    </html>
+  }
+  
+
+  
   def generateMarginReport(data:ElectionData,report:ElectionResultReport,requireTamperable:Boolean) = {
     val candidates = data.candidates
+    val usesResults = requireTamperable && report.marginsTamperableResult.exists { _.isDefined }
     def table(justShowElected:Boolean)= {
          <table class="Display">
-           <tr class="Head"><td>Group</td><td>Candidate</td><td>Margin votes</td><td>Margin papers</td><td>Counting Step</td><td>Vote Recipients</td></tr>
+           <tr class="Head"><td>Group</td><td>Candidate</td><td>Margin votes</td><td>Margin papers</td><td>Counting Step</td><td>Vote Recipients</td>{if (usesResults) <td>Effects</td>}</tr>
            {
              var lastgroup = "***"
              val margins = report.margins(requireTamperable) 
@@ -104,10 +134,10 @@ object ElectionReport {
                val c = candidates(i)
                val elected = report.electedCandidates.contains(i)
                if (elected || !justShowElected) {
-                 val r2 = <tr class="Striped"><td></td><td>{c.name}</td><td>{margin.map{_.votes}.getOrElse("")}</td><td>{margin.map{_.papers}.getOrElse("")}</td><td>{margin.map{_.step}.getOrElse("")}</td><td>{margin.map{_.how(data.candidates)}.getOrElse("")}</td></tr>
+                 val r2 = <tr class="Striped"><td></td><td>{c.name}</td><td>{margin.map{_.votes}.getOrElse("")}</td><td>{margin.map{_.papers}.getOrElse("")}</td><td>{margin.map{_.step}.getOrElse("")}</td><td>{margin.map{_.how(data.candidates)}.getOrElse("")}</td>{if (usesResults) <td>{report.marginsTamperableResult(i).map{_.desc(candidates)}.getOrElse("")}</td>}</tr>
                  if (c.group!=lastgroup) {
                    lastgroup=c.group
-                   val r1 = <tr class="Group"><td>{c.group}</td><td class="groupname">{data.groupNameFromID(c.group)}</td><td/><td/><td/><td/></tr>
+                   val r1 = <tr class="Group"><td>{c.group}</td><td class="groupname">{data.groupNameFromID(c.group)}</td><td/><td/><td/><td/>{if (usesResults) <td/>}</tr>
                    r1++r2
                  } else r2      
                }
@@ -123,26 +153,45 @@ object ElectionReport {
       </head>
       <body>
         <p>Simple Margins - the number of fewer votes for candidate X that would make X be excluded earlier than actual, all else being unchanged. Candidates elected before any exclusions not included. Of course there may be more complex ways to achieve the same result with fewer changes by altering the order of eliminations.</p>
-        <p>First preferences may {if (requireTamperable) "NOT" else ""} be changed</p>
+        <p>First preferences may {if (requireTamperable) "NOT" else ""} be changed. Papers is number of ballots that are changed; votes is after taking transfer values into account, and may be slightly inaccurate due to rounding.</p>
         <p><em>Just elected</em></p> {table(true)} <p><em>All</em></p> {table(false)}
       </body>
     </html>
   }
   
-  def generateOverallReport(result:ElectionResultReport,candidates:Array[Candidate],quota:Int) = {
+  def generateOverallReport(result:ElectionResultReport,candidates:Array[Candidate]) = {
     <html>
       <head>
         <title>Election Process</title>
         <link href="report.css" type="text/css" rel="stylesheet"></link>
       </head>
       <body>
-        <p>Quota : {quota}</p>
+        <p>Quota : {result.quota}</p>
         {if (result.numStochastic>0) <p> {result.numStochastic.toString+" Stochastic runs."} {if (result.isStochasticIgnoreWhoIsEliminatedForMergingIntoStochasticReport) " Note that different elimination orders are collated here; the list below is typical." } </p>}
         <table class="Display">
            <tr class="Head"><td>Count number</td><td>Candidates elected</td><td>Candidates Distributed</td><td>Candidates Excluded</td></tr>
-           { for ((step,count)<-result.history.zipWithIndex) yield 
+           { 
+             val distinctLines = new ArrayBuffer[(ElectionCountReport,List[Int])]
+             val lastCounts = new ListBuffer[Int]
+             var lastLineDef : List[Int] = null
+             var lastReport : ElectionCountReport = null
+             def emitRecord() {
+               distinctLines+= ((lastReport,lastCounts.toList))
+               lastReport=null; lastLineDef=null; lastCounts.clear()
+             }
+             for ((step,count)<-result.history.zipWithIndex) {
+               val linedef : List[Int] = step.electedCandidates.toList++List(-1,step.countType.candidateDistributed)++step.countType.candidatesEliminated
+               if (linedef!=lastLineDef && lastLineDef!=null) emitRecord()
+               lastLineDef = linedef
+               lastReport=step
+               lastCounts+= count+1 // +1 makes it 1 based rather than 0 based - humans like counting from 1.
+             }
+             emitRecord()
+             for ((step,counts)<-distinctLines) yield 
                <tr class="Striped">
-                 <td><a href={"count"+(count+1)+".html"}>{count+1}</a></td>
+                 <td>
+                   { for (count<-counts) yield <span><a href={"count"+(count)+".html"}>{count}</a> </span> }
+                 </td>
                  <td>
                    {for (c<-step.electedCandidates) yield <p>{candidates(c).name}</p>}
                  </td>
@@ -159,12 +208,16 @@ object ElectionReport {
   def saveReports(dir:File,result:ElectionResultReport,data:ElectionData) {
     dir.mkdirs()
     createCSS(dir)
-    val overall = generateOverallReport(result,result.candidates,result.quota)
+    val overall = generateOverallReport(result,result.candidates)
     scala.xml.XML.save(new File(dir,"About.html").toString, overall)
     for ((step,count)<-result.possiblyStochasticHistory.zipWithIndex) {
       val humanCount = count+1
-      val xml = generateReportForASingleCount(step,humanCount,data)
+      val xml = generateReportForASingleCount(step,humanCount,data,result)
       scala.xml.XML.save(new File(dir,"count"+humanCount+".html").toString, xml,"UTF-8")
+    }
+    for (candidateID<-0 until data.numCandidates) {
+      val xml = generateReportForASingleIndividual(candidateID,data,result)
+      scala.xml.XML.save(new File(dir,"candidate "+data.candidates(candidateID).name+".html").toString, xml,"UTF-8")
     }
     if (result.hasMarginInfo) {
       scala.xml.XML.save(new File(dir,"marginsAllow1PrefsChanges.html").toString, generateMarginReport(data,result,false),"UTF-8")      
@@ -344,20 +397,29 @@ class CountReportTypeFirstCount() extends CountReportType("First Count",false,fa
    override def structureDesc(candidates:Array[Candidate],ignoreWhoIsEliminatedForMergingIntoStochasticReport:Boolean) = "First Count"
 }
 
-class Recipient(val who:Int,val votes:Int) {
-  def desc(candidates:Array[Candidate]) : String = candidates(who).name+"\u2192"+votes  // \u2192 is right arrow
+class TamperedVote(val whoFrom:Int,val whoTo:Int,val numPapers:Int,val numVotes:Int,val src:Option[ActualListOfTamperableVotes]) {
+  def desc(candidates:Array[Candidate]) : String = candidates(whoFrom).name+"\u2192"+candidates(whoTo).name+":"+numPapers+(if (numPapers!=numVotes) "("+numVotes+" votes)" else "") // \u2192 is right arrow
 }
-class Margin(val votes:Int,val papers:Int,val step:Int,recipients:Array[Recipient]) {
-  def how(candidates:Array[Candidate]) : String = recipients.map{_.desc(candidates)}.mkString(" , ")
+class Margin(val step:Int,val tamperings:Array[TamperedVote]) {
+  val votes = tamperings.map { _.numVotes}.sum
+  val papers = tamperings.map {_.numPapers}.sum
+
+  def how(candidates:Array[Candidate]) : String = tamperings.map{_.desc(candidates)}.mkString(" , ")
+}
+class ElectionChanged(val originalElected:List[Int],val newElected:List[Int]) {
+  val newWinners : Set[Int] = newElected.toSet--originalElected
+  val newLosers : Set[Int] = originalElected.toSet--newElected
+  def desc(candidates:Array[Candidate]) : String = newLosers.toList.map{"-"+candidates(_).name}.mkString(" ")+newWinners.toList.map{"+"+candidates(_).name}.mkString(" ")
 }
 
-class ElectionResultReport(val candidates:Array[Candidate],val ineligibleCandidates:Set[Int]) { 
+class ElectionResultReport(val candidates:Array[Candidate],val ineligibleCandidates:Set[Int],val printDebugMessages:Boolean) { 
    def numCandidates = candidates.length
    val history = new ArrayBuffer[ElectionCountReport]
    def currentCount = history.last
    val electedCandidates = new ArrayBuffer[Int]
    val marginsNoRestrictions : Array[Option[Margin]] = Array.fill(candidates.length)(None)
    val marginsTamperable : Array[Option[Margin]] = Array.fill(candidates.length)(None) //margins where you can't change first pref votes below or above line
+   val marginsTamperableResult : Array[Option[ElectionChanged]] = Array.fill(candidates.length)(None)
    var excludedCandidates :Set[Int] = Set.empty
    var electedCandidatesSet :Set[Int] = Set.empty
    var progressiveTotalOfExhaustedVotes=0.0
@@ -372,7 +434,7 @@ class ElectionResultReport(val candidates:Array[Candidate],val ineligibleCandida
     //println("Elected candidate "+candidates(candidateID).name+"   as "+reason)
    }
    def addECDecision(equalCandidates:Set[Int]) {
-     println("Count "+history.length+" EC had to decide among "+(for (c<-equalCandidates.toList.sorted) yield candidates(c).name+" ("+c+") ").mkString(","))
+     if (printDebugMessages) println("Count "+history.length+" EC had to decide among "+(for (c<-equalCandidates.toList.sorted) yield candidates(c).name+" ("+c+") ").mkString(","))
      currentCount.addECDecision(equalCandidates)
    }
    var tallys:Int=>Double=_
@@ -400,11 +462,14 @@ class ElectionResultReport(val candidates:Array[Candidate],val ineligibleCandida
 
    def margins(requireTamperable:Boolean) = if (requireTamperable) marginsTamperable else marginsNoRestrictions
    
-   def addMarginInfo(candidate:Int,marginVotes:Int,marginPapers:Int,recipients:Array[Recipient],requireTamperable:Boolean) {
-     val shouldOverwrite = margins(requireTamperable)(candidate).map{_.papers>marginPapers}.getOrElse(true)
-     if (shouldOverwrite) margins(requireTamperable)(candidate)=Some(new Margin(marginVotes,marginPapers,history.length+1,recipients))
+   def addMarginInfo(candidate:Int,recipients:Array[TamperedVote],requireTamperable:Boolean) {
+     val margin = new Margin(history.length+1,recipients)
+     val shouldOverwrite = margins(requireTamperable)(candidate).map{_.papers>margin.papers}.getOrElse(true)
+     if (shouldOverwrite) margins(requireTamperable)(candidate)=Some(margin)
    }
    def hasMarginInfo :Boolean = marginsNoRestrictions.exists { _.isDefined }    
+   def addMarginTamperableEffectInfo(candidate:Int,delta:ElectionChanged) { marginsTamperableResult(candidate)=Some(delta) }
+   
   def note(s:String)  { 
     // println(s)
   }
