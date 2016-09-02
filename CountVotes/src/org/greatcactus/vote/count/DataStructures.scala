@@ -73,7 +73,7 @@ sealed class ElectionData(
           if (numTickets==0) throw new IllegalArgumentException("Group "+s.group+" has no tickets")
           val portion = s.numVoters/numTickets
           val excess = s.numVoters-portion*numTickets
-          val choice = if (excess>0) ticketRoundingChoices.getOrElse(gi.groupId,throw new Exception(name+" ticket "+gi.groupId+" needs a rounding choice between 0 and "+(numTickets-1)+" to deal with "+excess+" excess")) else 0
+          val choice = if (excess>0) ticketRoundingChoices.getOrElse(gi.groupId,{println(name+" ticket "+gi.groupId+" needs a rounding choice between 0 and "+(numTickets-1)+" to deal with "+excess+" excess");0}) else 0
           //println("Group "+s.group+" ticket choice "+choice+" for excess "+excess)
           for (i<-0 until numTickets) {
             val extra = if (excess==0) 0 
@@ -106,7 +106,7 @@ sealed class ElectionData(
     def process[T <: VoteSourceSubsettable[T] : ClassTag](invotes:Array[T]) : Array[T] = {
       val doneFullExclude : Array[T] = invotes.filter{v => !excludeVotes.contains(v)}
       val donePartialExclude : Array[T] =  for (v <-doneFullExclude) yield partialExcludeVotes.get(v) match { case Some(n)=> v.subset(v.n-n); case None => v}
-      val addT : Array[T] = addVotes.toArray.collect{case v:T => v}
+      val addT : Array[T] = addVotes.toArray.collect{case v:T if v.n>0 => v}
       donePartialExclude++addT
     }
     
@@ -189,7 +189,7 @@ class Vote(/** ordered list of candidates */ val preferences:Array[Int],val numV
 trait VoteSource {
   def isATL : Boolean
   /** True if it is possible for the vote to be tampered with without easy detection, assuming it is not the first preference */
-  def isTamperable(/** True if the position being considered for modification is plausibly in the first group of a RATL vote */ couldBeInFirstGroup:Boolean) : Boolean
+  def isTamperable(/** True if the position being considered for modification is plausibly in the first group of a RATL vote */ couldBeInFirstGroup:Boolean,/** True if only want ATL, false if only want BTL */wantATL:Boolean) : Boolean
   /** The number of votes here */
   def n:Int
   def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate) : VoteSourceSubsettable[VoteSource]
@@ -201,7 +201,7 @@ trait VoteSourceSubsettable[+T] extends VoteSource {
 sealed class SATL(val group:String,val numVoters:Int) extends Dumpable with VoteSourceSubsettable[SATL] {
   def line = ""+group+"\t"+numVoters
   override def isATL = true
-  override def isTamperable(couldBeInFirstGroup:Boolean) = false
+  override def isTamperable(couldBeInFirstGroup:Boolean,wantATL:Boolean) = false
   override def n = numVoters
   override def subset(n:Int) = new SATL(group,n)
   override def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate) = new SATL(candidateTo.group,numVoters) // not perfect, but as good as likely to get.
@@ -210,16 +210,18 @@ sealed class SATL(val group:String,val numVoters:Int) extends Dumpable with Vote
 sealed class ATL(/** groups listed in preference order */ val groups:Array[String],val numVoters:Int) extends Dumpable with VoteSourceSubsettable[ATL] {
   def line = groups.mkString(" ")+"\t"+numVoters
   override def isATL = true
-  override def isTamperable(couldBeInFirstGroup:Boolean) = false // TODO make better !couldBeInFirstGroup
+  override def isTamperable(couldBeInFirstGroup:Boolean,wantATL:Boolean) = wantATL && !couldBeInFirstGroup
   override def n = numVoters
   override def subset(n:Int) = new ATL(groups,n)
-  override def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate) = ??? // need to make sure destination is top of chart. new ATL(groups.map{c => if (c==candidateFrom.group) candidateTo.group else if (c==candidateTo.group) candidateFrom.group else c},numVoters)
+  override def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate) = { // assume destination is top of chart. 
+    new ATL(groups.map{c => if (c==candidateFrom.group) candidateTo.group else if (c==candidateTo.group) candidateFrom.group else c},numVoters)
+  }
 } 
 
 sealed class BTL(/** candidate ids listed in preference order */ val candidates:Array[Int]) extends Dumpable with VoteSourceSubsettable[BTL] {
   def line = candidates.mkString(",")
   override def isATL = false
-  override def isTamperable(couldBeInFirstGroup:Boolean) = true
+  override def isTamperable(couldBeInFirstGroup:Boolean,wantATL:Boolean) = !wantATL
   override def n = 1
   override def subset(n:Int) = new BTL(candidates)
   override def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate) = new BTL(candidates.map{c => if (c==fromWho) toWho else if (c==toWho) fromWho else c})

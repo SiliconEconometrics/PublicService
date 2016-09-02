@@ -130,7 +130,7 @@ object NSWLocalData {
            for (contest<-contests) {
                  val index3 = cacheFile(urlBase+contest.contestrelurl.replace("summary","final-results"),cacheDir)
                  if (index3.exists) for (line<-Source.fromFile(index3)(Codec.ISO8859).getLines()) line.trim() match {
-                   case zipFilePatternMatcher(ziprelurl,contestloc) => // <li><strong><a class="FinalResultsFile" target="FinalResult" title="Details Preference for Count ZIP" href="/LGE2012/Results/LGE2012/PRCC/Albury/11 - Details Preference for Count.zip">11 - Details Preference for Count.zip</a></strong> — This zip file provides preference details for all formal ballot papers used for count.</li></ul></div></div>
+                   case zipFilePatternMatcher(ziprelurl,contestloc) => // <li><strong><a class="FinalResultsFile" target="FinalResult" title="Details Preference for Count ZIP" href="/LGE2012/Results/LGE2012/PRCC/Albury/11 - Details Preference for Count.zip">11 - Details Preference for Count.zip</a></strong> ï¿½ This zip file provides preference details for all formal ballot papers used for count.</li></ul></div></div>
                      //println(s"  zip file at $ziprelurl $contestloc")
                      val generalname = contest.contestrelurl.substring(9,contest.contestrelurl.indexOf("/",10))
                      val extraname = if (contestloc.contains("%20")) " "+contestloc.substring(contestloc.indexOf("%20")+3) else ""

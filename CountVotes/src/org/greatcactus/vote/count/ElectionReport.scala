@@ -120,21 +120,26 @@ object ElectionReport {
   
 
   
-  def generateMarginReport(data:ElectionData,report:ElectionResultReport,requireTamperable:Boolean) = {
+  def generateMarginReport(data:ElectionData,report:ElectionResultReport,marginType:MarginTypes.MarginType) = {
     val candidates = data.candidates
-    val usesResults = requireTamperable && report.marginsTamperableResult.exists { _.isDefined }
+    val marginResults = report.marginsResult(marginType.n)
+    //println("marginType.n="+marginType.n+" marginResults="+marginResults.mkString(","))
+    val usesResults = marginResults.exists { _.isDefined }
     def table(justShowElected:Boolean)= {
          <table class="Display">
            <tr class="Head"><td>Group</td><td>Candidate</td><td>Margin votes</td><td>Margin papers</td><td>Counting Step</td><td>Vote Recipients</td>{if (usesResults) <td>Effects</td>}</tr>
            {
              var lastgroup = "***"
-             val margins = report.margins(requireTamperable) 
+             val margins = report.margins(marginType.n) 
              for (i<-0 until candidates.length) yield {
                val margin = margins(i)
                val c = candidates(i)
                val elected = report.electedCandidates.contains(i)
                if (elected || !justShowElected) {
-                 val r2 = <tr class="Striped"><td></td><td>{c.name}</td><td>{margin.map{_.votes}.getOrElse("")}</td><td>{margin.map{_.papers}.getOrElse("")}</td><td>{margin.map{_.step}.getOrElse("")}</td><td>{margin.map{_.how(data.candidates)}.getOrElse("")}</td>{if (usesResults) <td>{report.marginsTamperableResult(i).map{_.desc(candidates)}.getOrElse("")}</td>}</tr>
+                 val r2 = <tr class="Striped"><td></td><td>{c.name}</td><td>{margin.map{_.votes}.getOrElse("")}</td><td>{margin.map{_.papers}.getOrElse("")}</td><td>{margin.map{_.step}.getOrElse("")}</td>
+                             <td>{for (m<-margin.toList;l<-m.howLines(candidates)) yield <p>{l}</p>}</td>
+                             {if (usesResults) <td>{for (ec<-marginResults(i).toList) yield <a class="subtle" href={"Tampering/"+marginType.filenamebase+"/"+c.name+"/About.html"}>{for (l<-ec.descList(candidates)) yield <p>{l}</p>}</a>}</td>} 
+                          </tr>
                  if (c.group!=lastgroup) {
                    lastgroup=c.group
                    val r1 = <tr class="Group"><td>{c.group}</td><td class="groupname">{data.groupNameFromID(c.group)}</td><td/><td/><td/><td/>{if (usesResults) <td/>}</tr>
@@ -152,9 +157,11 @@ object ElectionReport {
         <link href="report.css" type="text/css" rel="stylesheet"></link>
       </head>
       <body>
-        <p>Simple Margins - the number of fewer votes for candidate X that would make X be excluded earlier than actual, all else being unchanged. Candidates elected before any exclusions not included. Of course there may be more complex ways to achieve the same result with fewer changes by altering the order of eliminations.</p>
-        <p>First preferences may {if (requireTamperable) "NOT" else ""} be changed. Papers is number of ballots that are changed; votes is after taking transfer values into account, and may be slightly inaccurate due to rounding.</p>
-        <p><em>Just elected</em></p> {table(true)} <p><em>All</em></p> {table(false)}
+        <p>Margins - a method of transferring votes from some candidates to others to change the result of the election. General approach is to try to exclude candidates. Candidates elected before any exclusions not included. Of course there may be more complex ways to achieve the same result with fewer changes by altering the order of eliminations.</p>
+        <p>First preferences may {if (marginType.allowFirstPrefChanges) "" else "NOT"} be changed. Votes may {if (marginType.allowPreferencesTakenFromNewLoser) "" else "NOT"} be taken from the newly excluded candidate. Votes may {if (marginType.allowPreferencesGivenToNewWinner) "" else "NOT"} be given to the new winning candidate. Above the line votes may {if (marginType.allowAboveTheLine) "" else "NOT"} be used.</p>
+        <p>Papers is number of ballots that are changed; votes is after taking transfer values into account, and may be slightly inaccurate due to rounding. In particular sometimes taking papers from one person to another will be a different number of votes for the donor and recipient. The count number is where the change is likely to first have a big effect.</p>
+        <p><em>Just elected</em></p> {table(true)} 
+        { if (((0 until candidates.length).toSet--report.electedCandidates).exists{i=>report.margins(marginType.n)(i).isDefined}) { <div><p><em>All</em></p> {table(false)} </div> }}
       </body>
     </html>
   }
@@ -200,7 +207,7 @@ object ElectionReport {
                </tr>
            }
         </table>
-        {if (result.hasMarginInfo) <p>Margins <a href="marginsAllow1PrefsChanges.html">allowing</a> and <a href="marginsNo1Prefs.html">not allowing</a> first preference changes</p>}
+        {for (marginType<-MarginTypes.allTypes) yield if (result.hasMarginInfo(marginType)) <p>Margins <a href={marginType.filename}>{marginType.name}</a></p>}
       </body>
     </html>
   }
@@ -219,9 +226,10 @@ object ElectionReport {
       val xml = generateReportForASingleIndividual(candidateID,data,result)
       scala.xml.XML.save(new File(dir,"candidate "+data.candidates(candidateID).name+".html").toString, xml,"UTF-8")
     }
-    if (result.hasMarginInfo) {
-      scala.xml.XML.save(new File(dir,"marginsAllow1PrefsChanges.html").toString, generateMarginReport(data,result,false),"UTF-8")      
-      scala.xml.XML.save(new File(dir,"marginsNo1Prefs.html").toString, generateMarginReport(data,result,true),"UTF-8")      
+    for (marginType<-MarginTypes.allTypes) {
+      val file = new File(dir,marginType.filename)
+      if (result.hasMarginInfo(marginType)) scala.xml.XML.save(file.toString, generateMarginReport(data,result,marginType),"UTF-8")   
+      else file.delete()
     }
   }
   def blankIfZero(num:Double) = if (num==0) "" else stringOfVoteCount(num)
@@ -397,29 +405,14 @@ class CountReportTypeFirstCount() extends CountReportType("First Count",false,fa
    override def structureDesc(candidates:Array[Candidate],ignoreWhoIsEliminatedForMergingIntoStochasticReport:Boolean) = "First Count"
 }
 
-class TamperedVote(val whoFrom:Int,val whoTo:Int,val numPapers:Int,val numVotes:Int,val src:Option[ActualListOfTamperableVotes]) {
-  def desc(candidates:Array[Candidate]) : String = candidates(whoFrom).name+"\u2192"+candidates(whoTo).name+":"+numPapers+(if (numPapers!=numVotes) "("+numVotes+" votes)" else "") // \u2192 is right arrow
-}
-class Margin(val step:Int,val tamperings:Array[TamperedVote]) {
-  val votes = tamperings.map { _.numVotes}.sum
-  val papers = tamperings.map {_.numPapers}.sum
-
-  def how(candidates:Array[Candidate]) : String = tamperings.map{_.desc(candidates)}.mkString(" , ")
-}
-class ElectionChanged(val originalElected:List[Int],val newElected:List[Int]) {
-  val newWinners : Set[Int] = newElected.toSet--originalElected
-  val newLosers : Set[Int] = originalElected.toSet--newElected
-  def desc(candidates:Array[Candidate]) : String = newLosers.toList.map{"-"+candidates(_).name}.mkString(" ")+newWinners.toList.map{"+"+candidates(_).name}.mkString(" ")
-}
-
 class ElectionResultReport(val candidates:Array[Candidate],val ineligibleCandidates:Set[Int],val printDebugMessages:Boolean) { 
    def numCandidates = candidates.length
    val history = new ArrayBuffer[ElectionCountReport]
    def currentCount = history.last
    val electedCandidates = new ArrayBuffer[Int]
-   val marginsNoRestrictions : Array[Option[Margin]] = Array.fill(candidates.length)(None)
-   val marginsTamperable : Array[Option[Margin]] = Array.fill(candidates.length)(None) //margins where you can't change first pref votes below or above line
-   val marginsTamperableResult : Array[Option[ElectionChanged]] = Array.fill(candidates.length)(None)
+   val margins : Array[Array[Option[Margin]]] = Array.fill(MarginTypes.numTypes,candidates.length)(None)
+//   val marginsTamperable : Array[Option[Margin]] = Array.fill(candidates.length)(None) //margins where you can't change first pref votes below or above line
+   val marginsResult : Array[Array[Option[ElectionChanged]]] = Array.fill(MarginTypes.numTypes,candidates.length)(None)
    var excludedCandidates :Set[Int] = Set.empty
    var electedCandidatesSet :Set[Int] = Set.empty
    var progressiveTotalOfExhaustedVotes=0.0
@@ -460,15 +453,13 @@ class ElectionResultReport(val candidates:Array[Candidate],val ineligibleCandida
    }
    def possiblyStochasticHistory:Array[ElectionCountReport] = if (historyStochastic.isEmpty) history.toArray else historyStochastic.toArray
 
-   def margins(requireTamperable:Boolean) = if (requireTamperable) marginsTamperable else marginsNoRestrictions
-   
-   def addMarginInfo(candidate:Int,recipients:Array[TamperedVote],requireTamperable:Boolean) {
-     val margin = new Margin(history.length+1,recipients)
-     val shouldOverwrite = margins(requireTamperable)(candidate).map{_.papers>margin.papers}.getOrElse(true)
-     if (shouldOverwrite) margins(requireTamperable)(candidate)=Some(margin)
+   def addMarginInfo(candidate:Int,margin:Margin,marginType:MarginTypes.MarginType) {
+     if (margin.papers<=0) throw new IllegalArgumentException
+     val shouldOverwrite = margins(marginType.n)(candidate).map{_.papers>margin.papers}.getOrElse(true)
+     if (shouldOverwrite) margins(marginType.n)(candidate)=Some(margin)
    }
-   def hasMarginInfo :Boolean = marginsNoRestrictions.exists { _.isDefined }    
-   def addMarginTamperableEffectInfo(candidate:Int,delta:ElectionChanged) { marginsTamperableResult(candidate)=Some(delta) }
+   def hasMarginInfo(marginType:MarginTypes.MarginType) :Boolean = margins(marginType.n).exists { _.isDefined }    
+   def addMarginTamperableEffectInfo(candidate:Int,delta:ElectionChanged,marginType:MarginTypes.MarginType) { marginsResult(marginType.n)(candidate)=Some(delta) }
    
   def note(s:String)  { 
     // println(s)

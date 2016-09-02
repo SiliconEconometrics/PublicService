@@ -31,7 +31,7 @@ class ZZZ_TestFederal2013 {
     data.printStatus()
     val officialResults = FederalElectionData.readOfficialResults2013(data)
     val worker = new FederalSenateCountHelper(data,toBeElected,ticketRoundingChoices,aecDeemedOrder,WhatMarginInformationToCompute.none,true)
-    worker.run()
+    worker.run(None)
     val myreport = worker.report
 
     for (countNo<-0 until officialResults.counts.length) {
