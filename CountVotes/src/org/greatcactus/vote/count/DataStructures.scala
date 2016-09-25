@@ -39,7 +39,7 @@ sealed class ElectionData(
     val btls : Array[BTL]
     ) {
   val froupFromID : Map[String,GroupInformation] = Map.empty++groupInfo.map{g=>g.groupId->g}
-  lazy val groupNameFromID : Map[String,String] = Map.empty++groupInfo.map{g=>g.groupId->g.groupName}
+  lazy val groupNameFromID : Map[String,String] = Map.empty++groupInfo.map{g=>g.groupId->g.groupName}+(""->"Ungrouped")
   lazy val candidateIndexFromName : Map[String,Int] = Map.empty++candidates.map{_.name}.zipWithIndex
 
   def numSATLs = satls.map{_.numVoters}.sum
@@ -266,6 +266,7 @@ class VoteInterpreter(groups:Array[GroupInformation],numCandidates:Int) {
     val satlCounts = new Array[Int](numGroups)
     val extraBTLs = new ArrayBuffer[BTL]
     val extraATLs = new ArrayBuffer[String]
+    val groupLookup = Map(groups.map{_.groupId}.zipWithIndex : _*)
   
     def addBTL(btl:BTL) { extraBTLs+=btl }
     def addBTL(ballotID:Long,candidate:Candidate,preferenceNumber:Int) {
@@ -279,6 +280,9 @@ class VoteInterpreter(groups:Array[GroupInformation],numCandidates:Int) {
     }
     def addSATL(groupIndex:Int,n:Int=1) {
       satlCounts(groupIndex)+=n
+    }
+    def addSATL(group:String) {
+      addSATL(groupLookup(group),1)
     }
     def getData(orderedCandidates:Array[Candidate],name:String) : ElectionData = {
       //println("SATLs : "+satlCounts.sum)

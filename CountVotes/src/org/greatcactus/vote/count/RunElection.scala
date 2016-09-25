@@ -178,7 +178,7 @@ class NSWElectionHelper(data:ElectionData,candidatesToBeElected:Int,random:Rando
       }
       for (c<-orderedCandidates) {
         report.declareElected(c.candidateID,"Has Quota")
-        candidatesWithUndistributedVotes+=c
+        if (c.surplusVotes>0) candidatesWithUndistributedVotes+=c
       }
       // 10 More candidates to be elected?
       if (emptySeats==0) { report.finishCount() ; return }
@@ -235,10 +235,11 @@ class NSWElectionHelper(data:ElectionData,candidatesToBeElected:Int,random:Rando
       val numExhaustedSetAside = numRedistributedExhausted-numExhaustedThatWouldBeCarriedOn
       val distribution : Map[Int,Array[DVote]] = notExhausted.groupBy { _.current}
       // 16 Calculate transfer value
-      val transferValue = (candidateToDistribute.surplusVotes.toDouble/(numDistributed max 1)) min 1.0
+      val transferValueUnrounded = (candidateToDistribute.surplusVotes.toDouble/(numDistributed max 1)) min 1.0
+      val transferValue = Math.round(transferValueUnrounded*1e16)*1e-16  // according to spec, should be calculated to 16 decimal places.
       // 17 Calculate number of ballot papers to be transferred and set aside
       val recipients = for ((id,dvotes)<-distribution) yield new VotesToBeTransferred(id,dvotes,transferValue)
-      val sortedRecipients = recipients.toList.sortWith{case (a,b) => a.fractonalVotesToBeTransferred>b.fractonalVotesToBeTransferred || (a.fractonalVotesToBeTransferred==b.fractonalVotesToBeTransferred && a.intVotesToBeTransferred>b.intVotesToBeTransferred)}
+      val sortedRecipients = recipients.toList.sortWith{case (a,b) => a.fractonalVotesToBeTransferred6DecimalPlaces>b.fractonalVotesToBeTransferred6DecimalPlaces || (a.fractonalVotesToBeTransferred6DecimalPlaces==b.fractonalVotesToBeTransferred6DecimalPlaces && a.intVotesToBeTransferred>b.intVotesToBeTransferred)}
       if (electionRules.useNSWProbabilisticSamplingOfElections) {
         val numRoundUps = candidateToDistribute.surplusVotes.toInt-recipients.map{_.intVotesToBeTransferred}.sum
         val recipientsToRoundUp = if (numRoundUps>0 && numRoundUps<sortedRecipients.size && sortedRecipients(numRoundUps-1).originalNumVotes==sortedRecipients(numRoundUps).originalNumVotes) {
@@ -341,6 +342,7 @@ class VotesToBeTransferred(val candidateID:Int,val votes:Array[DVote],transferVa
   private val rawTransfer = transferValue*originalNumVotes
   var intVotesToBeTransferred = rawTransfer.toInt
   val fractonalVotesToBeTransferred = rawTransfer-intVotesToBeTransferred
+  val fractonalVotesToBeTransferred6DecimalPlaces : Long = Math.round(fractonalVotesToBeTransferred*1000000.0) // Bug fix: Spec (sensibly) requires doing to 6 digits. Can cause rare off by 1 errors. Found while investigating an exceedingly similar bug in the 2016 official results (count 2, THOMAS Muzz should have got 3, not 4, votes)
   def roundUp() { if (fractonalVotesToBeTransferred>0) intVotesToBeTransferred+=1 }
   var votesToActuallyDistribute : Array[DVote] = null
   def setAsideRandomly(random:Random) {

@@ -397,7 +397,7 @@ class CountReportTypeEliminationSet(override val candidatesEliminated:List[Int],
 }
 
 class CountReportTypeExcessDistribution(override val candidateDistributed:Int,val votes:Double,totalTransferred:Double,transferValue:Double,val numVotesToBeRedistributed:Double,override val numExhaustedSetAside:Double,override val numExhaustedThatWouldBeCarriedOn:Double,override val setAsidePrior:Double,distributedMakesSense:Boolean) extends CountReportType("Distributed Excess",true,distributedMakesSense,true,distributedMakesSense) {
-   def heading(candidates:Array[Candidate]) = "Distributed "+ElectionReport.stringOfVoteCount(votes)+" excess votes for candidate "+candidates(candidateDistributed).name+", transfer value "+votes+"/("+numVotesToBeRedistributed+"-"+numExhaustedSetAside+")="+transferValue
+   def heading(candidates:Array[Candidate]) = "Distributed "+ElectionReport.stringOfVoteCount(votes)+" excess votes for candidate "+candidates(candidateDistributed).name+", transfer value "+votes+"/("+numVotesToBeRedistributed+"-"+numExhaustedSetAside+")="+("%.6f".format(transferValue))
    override def structureDesc(candidates:Array[Candidate],ignoreWhoIsEliminatedForMergingIntoStochasticReport:Boolean) = "Distributed excess votes for candidate "+candidates(candidateDistributed).name
 }
 class CountReportTypeFirstCount() extends CountReportType("First Count",false,false,false,false) {

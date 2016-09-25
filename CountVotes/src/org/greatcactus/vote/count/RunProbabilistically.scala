@@ -34,14 +34,53 @@ trait StatusOutput {
 }
 
 object ProbabilisticWork {
-  def runProbabilisticly(numTotalRuns:Int,numThreads:Int,votedata:ElectionData,printProgress:Boolean,numCandidatesToElect:Int,electionRules:ElectionRules,output:Option[StatusOutput],ineligibleCandidates:Set[Int],reportLocations:Option[StochasticReportOptions]) {
+  val pendingExtremenessReports = new collection.mutable.ArrayBuffer[(String,Int,Double)] 
+  lazy val extremenessDir = {
+    val dir = new File("NSWExtremenessReports")
+    if (dir.exists()) dir.listFiles().foreach { _.delete()}
+    dir.mkdirs()
+    ElectionReport.createCSS(dir)
+    dir
+  }
+  def writeExtremenessSummary() {
+    val xml = 
+     <html>
+      <head>
+        <meta charset="UTF-8"/> 
+        <title>Official vs. distribution Summary</title>
+        <link href="report.css" type="text/css" rel="stylesheet"></link>
+      </head>
+      <body>
+        <table class="Display">
+          <tr class="Head"><th>Contest</th><th>Statistic</th><th>P Value</th></tr>
+          {
+            for (r<-pendingExtremenessReports) yield <tr class="Striped"><td><a href={r._1+".html"}>{r._1}</a></td><td>{r._2}</td><td>{r._3}</td></tr>
+          }
+        </table>
+      </body>
+    </html>
+    scala.xml.XML.save(new File(extremenessDir,"About.html").toString,xml)
+  }
+  
+  def runProbabilisticly(numTotalRuns:Int,numThreads:Int,votedata:ElectionData,printProgress:Boolean,numCandidatesToElect:Int,electionRules:ElectionRules,output:Option[StatusOutput],ineligibleCandidates:Set[Int],reportLocations:Option[StochasticReportOptions],officialDOP : Option[NSWWholeCountSummary]=None) {
      if (output.isEmpty) votedata.printStatus()
 
+     val dist = new NSWDistributionSummary(votedata.numCandidates)
+     
      val cumulativeStats = new ElectionStats(votedata.candidates,printProgress,output)
   
      val stochasticReports = new collection.mutable.HashMap[String,ElectionResultReport] // only used if reportLocations.isDefined
+     var numExtremenessRunsDone = 0
      
      def addStochiasticReports(report:ElectionResultReport) {
+       if (officialDOP.isDefined) {
+         val summary = NSWWholeCountSummary.ofReport(report)
+         this.synchronized {
+           if (numExtremenessRunsDone*2<numTotalRuns) dist.addJustGenerateFunction(summary)
+           else dist.addJustEvaluateFunctionDistribution(summary)
+           numExtremenessRunsDone+=1
+         }
+       }
        if (reportLocations.isDefined) this.synchronized {
          val stochrep = stochasticReports.getOrElseUpdate(report.stucture(reportLocations.get.ignoreWhoIsEliminatedForMergingIntoStochasticReport),{report.makeStochastic(reportLocations.get.ignoreWhoIsEliminatedForMergingIntoStochasticReport);report})
          stochrep.addStochastic(report)     
@@ -77,6 +116,17 @@ object ProbabilisticWork {
   
      cumulativeStats.printStats(true)
      
+     if (officialDOP.isDefined) {
+       val (extremeness,pValue) = dist.extremeness(officialDOP.get)
+       pendingExtremenessReports+= ((votedata.name,extremeness,pValue))
+       println(votedata.name+" Official DOP extremeness "+extremeness+" pValue="+pValue)
+       scala.xml.XML.save(new File(extremenessDir,votedata.name+".html").toString, dist.extremenessReport(officialDOP.get, votedata.candidates.map{_.name}, votedata.name))
+       
+       //if (pValue<0.1) {
+      //   dist.printoutDetailedExtremeness(officialDOP.get,votedata.candidates.map{_.name})
+         //if (pValue<0.01) System.exit(0)
+       //}
+     }
      reportLocations match {
        case Some(options) =>
          val dir = options.dir

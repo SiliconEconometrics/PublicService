@@ -46,6 +46,7 @@ object IOUtil {
     is.close()
     res
   }
+  def loadFileAsString(file:File) : String = new String(loadFile(file))
   
   def loadStream(s:InputStream) : Array[Byte] = {
     sun.misc.IOUtils.readFully(s, -1, true)

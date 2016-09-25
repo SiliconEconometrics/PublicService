@@ -24,6 +24,7 @@ import java.io.FileInputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import scala.util.Random
+import org.jsoup.nodes.Document
 
 object NSWLocal2012IO {
   def loadRaw(zipedFile : File) : ElectionData = {
@@ -67,4 +68,64 @@ object NSWLocal2012IO {
       helper.getData(orderedCandidates.toArray,name)
   }
   
+}
+
+object NSWLocal2016IO {
+  
+  import scala.collection.JavaConversions._
+  import scala.collection.mutable.ArrayBuffer
+  
+  def parseDOP1ForCandidates(doc:Document) : (Array[Candidate],Array[GroupInformation]) = {
+    val groups = new ArrayBuffer[GroupInformation]
+    val candidates = new ArrayBuffer[Candidate]
+    for (table<-doc.select("table")) {
+      val rows = table.select("tr").toList
+      val headings : Map[String,Int] = Map(rows.head.select("th").toList.map{_.text.trim}.zipWithIndex :_*)
+      val groupCol = headings.get("Group")
+      var group = ""
+      var groupPosition = 0
+      for (candidateCol<-headings.get("Candidates in Ballot Order")) {
+         for (row<-rows.tail) {
+           val entries : IndexedSeq[String] = row.select("td").toIndexedSeq.map{_.text.trim}
+           val name = entries(candidateCol)
+           val groupStart = groupCol.map{entries(_)}.getOrElse("")
+           if (groupStart.length>0) { group=groupStart; groupPosition = 0; groups+=new GroupInformation(groupStart,name,Array()) }
+           else if (name=="UNGROUPED CANDIDATES") { group=""; groupPosition = 0 }
+           else if (name!="Formal Votes"&&name!="Informal Ballot Papers"&&name!="Total Votes / Ballot Papers"&&name!="Group Total"&&name!="Exhausted") {
+             candidates+=new Candidate(name,group,groupPosition)
+             if (group.length>0) groupPosition+=1
+           }
+         }
+      }
+    }
+    (candidates.toArray,groups.toArray)
+  }
+  
+  def loadRaw(zipedFile : File,orderedCandidates:Array[Candidate],orderedGroups:Array[GroupInformation],name:String) : ElectionData = {
+      val zipFile = new ZipFile(zipedFile)
+      import collection.JavaConversions._
+      val lines = Source.fromInputStream(zipFile.getInputStream(zipFile.entries().toList.head)).getLines().toList
+      // process candidates
+      val candidates  : Map[String,Candidate] = Map(orderedCandidates.map{c=>(c.name,c)} : _*) // candidate_id to candidate
+      // process votes - interpret all as below the line as that's what is in the data file.
+      val helper = new VoteInterpreter(orderedGroups,orderedCandidates.length)
+      for (l<-lines.tail) {
+        val ll = l.split('\t')
+        if (ll.length<10) throw new Exception("Do not understand candidate line "+l)
+        if (ll(9)=="Formal" && ll(5).length>0) {
+          if (ll.length!=11) throw new Exception("Do not understand candidate line "+l)
+          val ballotID = ll(3).toInt
+          val preferenceNumber = ll(5).toInt
+          val groupCode = ll(7)
+          val candidatename = ll(6)
+          ll(10) match {
+            case "SATL" => helper.addSATL(groupCode)
+            case "RATL" => helper.addRATL(ballotID, groupCode, preferenceNumber)
+            case "BTL" => helper.addBTL(ballotID, candidates(candidatename), preferenceNumber)
+          }
+        }
+      }
+      helper.getData(orderedCandidates,name)
+  }
+
 }
