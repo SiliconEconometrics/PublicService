@@ -15,6 +15,11 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
  */
+ 
+ Libraries needed
+ ----------------
+ gson (https://github.com/google/gson), and the scala xml library (in the Scala distribution)
+ Also jsoup.
 
 NSW
 ---
@@ -65,26 +70,26 @@ To run 2013: Put downloaded data files in Election/Federal/2016, and run Federal
 It will produce files in Federal2016Reports. Start with About.html
 
 This seems to produce exactly the same results as the official 2013 results, except for a difference of one paper in the last count in 2013 (which didn't change the number of votes because of rounding). I have no idea what caused this.
-It produced exactly the same results as the official 2016 NT results (others not available at time of writing), but this is a very weak statement as there was exactly one count.
+It produced exactly the same results as the official 2016 results (if you disable multiple eliminations and continue counting past the point everyone is elected).
 
 As above, there are lots of reasons not to trust it. This is provided in the hope it is useful but no guarantees of anything.
+
+A web front end is available at https://vote.andrewconway.org
 
 
 
 Compiling
 ---------
-It is written in Scala. It was written in version 2.11, but should work with 
-2.10 and probably future versions. It needs the standard scala libraries, plus
+It is written in Scala. It was written in version 2.12, but should work with
+2.10 & 2.11 and probably future versions. It needs the standard scala libraries, plus
 the xml library that comes with the scala distribution but is not generally
 added by default to the classpath.
 
-The directory structure includes files that allows it to be used as an eclipse
-project using the scala plugin. If you are not using eclipse, just use the src project.
-If using eclipse, you will need to set the path for the scala-xml library manually.
+The directory structure includes files that allows it to be used as an sbt project or idea project.
 
 
-Running State Election 2015
----------------------------
+Running NSW State Election 2015
+-------------------------------
 
 1) Get the state wide preferences data file from
    http://www.vtr.elections.nsw.gov.au/lc-home.htm#lc/state/preferences

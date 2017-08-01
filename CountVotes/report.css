@@ -22,6 +22,7 @@ td {
   text-align: left;
 }
 
+tr.ChangedCandidate { background : red; }
 tr.Group { background : #CCCCCC; } 
 
 /* Cells in even rows (2,4,6...) are one color */
