@@ -231,7 +231,9 @@ object NSWCountSummary {
     val transCounts = new Array[Int](candidateNames.length)
     val distCounts = new Array[Int](candidateNames.length)
     var exhausted:Int=0
-    val desc = doc.select("h4 a").first().attr("href").substring(4,7)+" : "
+    val desc = {
+      doc.select("h2").first().text.trim+" : "
+    }
     for (table<-doc.select("table").asScala) {
       val rows = table.select("tr").asScala
       val headings : Map[String,Int] = Map(rows.head.select("th").asScala.map{_.text.trim}.zipWithIndex :_*)

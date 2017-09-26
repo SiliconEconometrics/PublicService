@@ -186,11 +186,13 @@ class ContinuingCandidates(aecDeemedOrder:Seq[Int],val numCandidates:Int) {
   def -=(candidate:CandidateIndex) {
     set-=candidate
     orderedList=orderedList.filter{_ != candidate}
+    aecDeemedOrderMatters=aecDeemedOrderMatters.map{_.filter(_ != candidate)}.filter { _.size> 1 }
   }
   def --=(candidates:GenTraversableOnce[CandidateIndex]) {
     set= set--candidates
     val removeset = candidates.toSet
     orderedList=orderedList.filter{!removeset.contains(_)}
+    aecDeemedOrderMatters=aecDeemedOrderMatters.map{_.filter(!removeset.contains(_))}.filter { _.size> 1 }
   }
   /** Reorder orderedList, with ties broken by current order */
   def reorder(tallys:Array[Int]) {

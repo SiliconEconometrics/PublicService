@@ -288,10 +288,10 @@ class FederalSenateCountHelper(data:ElectionData,candidatesToBeElected:Int,ticke
     val maxExcludable = orderedCandidates.length-remainingVacancies
     if (toExclude13A.length>maxExcludable) toExclude13A.takeRight(maxExcludable) else toExclude13A
   }
-  def candidatesForExclusionWithMarginComputation(afterStepCount:Boolean) : List[CandidateIndex] = {
+  def candidatesForExclusionWithMarginComputation(afterStepCount:Boolean) : CandidateToExclude = {
     val excludeList = candidatesForExclusion(continuingCandidates.orderedList,true)
     if (marginOptions.wantAnyMarginInfo) new TamperingMarginCalculation(this,excludeList,marginOptions,afterStepCount) // do tampering computation
-    excludeList    
+    new CandidateToExclude(excludeList,continuingCandidates.couldAECHaveToMakeDecision(excludeList.head))
   }
   
   /** Do tampers and rerun to check they are right. */

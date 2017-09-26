@@ -29,6 +29,7 @@ import org.junit.Test;
  * Test my algorithm against official distribution of preferences
  */
 class ZZZ_TestWA2013 {
+  FindBaseDir.findBaseDir()
 
   def test(region:String,waecDeemedOrder:Seq[CandidateIndex]) {
     val (data,officialResults) = WA2013ElectionData.loadRegionRaw(region)
@@ -68,25 +69,7 @@ class ZZZ_TestWA2013 {
   @Test def testSmet() { test("Smet",Nil) }
   @Test def testSthWest() { test("SthWest",Nil) }
   @Test def testMinPas() { test("MinPas",Nil) }
-/*
-	@Test def testNT() { test("NT",2,DeducedAEC2013TicketSplits.nt,DeducedAEC2013Orders.nt) }
-	@Test def testVIC() { test("VIC",6,DeducedAEC2013TicketSplits.vic,DeducedAEC2013Orders.vic) }
-  @Test def testNSW() { test("NSW",6,DeducedAEC2013TicketSplits.nsw,DeducedAEC2013Orders.nsw) }
-  @Test def testACT() { test("ACT",2,DeducedAEC2013TicketSplits.act,DeducedAEC2013Orders.act) }
-  @Test def testTAS() { test("TAS",6,DeducedAEC2013TicketSplits.tas,DeducedAEC2013Orders.tas) }
-  @Test def testSA() { test("SA",6,DeducedAEC2013TicketSplits.sa,DeducedAEC2013Orders.sa) } // IMPORTANT NOTE! THIS PRODUCES SLIGHTLY DIFFERENT RESULTS TO OFFICIAL.
-  @Test def testWA() { test("WA",6,DeducedAEC2013TicketSplits.wa,DeducedAEC2013Orders.wa) }
-  @Test def testQLD() { test("QLD",6,DeducedAEC2013TicketSplits.qld,DeducedAEC2013Orders.qld) }
-  
-  
-  @Test def testSAexhaustion() {
-    val data = FederalElectionData.load2013("SA")
-    val votes : Array[Vote] = data.makeVotes(DeducedAEC2013TicketSplits.sa)
-    val dvotes : Array[DVote] = for (v<-votes) yield new DVote(0,v.numVoters,v.preferences,v.src)
-    val continuing = Set(2,14,68)
-    val redvotes = dvotes.map{_.skipNotContinuingCandidates(continuing)}
-    val exhausted = redvotes.filter { _.isExhausted }
-    val numexhausted = exhausted.map{_.numVoters}.sum
-    println("Numexhausted = "+numexhausted)
-  }*/
+
 }
+
+

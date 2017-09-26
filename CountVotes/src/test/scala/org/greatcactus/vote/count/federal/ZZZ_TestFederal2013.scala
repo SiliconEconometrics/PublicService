@@ -28,6 +28,7 @@ import org.junit.Test;
  * Test my algorithm against official distribution of preferences
  */
 class ZZZ_TestFederal2013 {
+  FindBaseDir.findBaseDir()
 
   def test(state:String,toBeElected:Int,ticketRoundingChoices:Map[String,Int],aecDeemedOrder:Seq[Int]) {
     val data = FederalElectionData.load2013(state)

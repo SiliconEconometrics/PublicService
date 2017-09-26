@@ -19,7 +19,7 @@
 package org.greatcactus.vote.count
 
 object FindBaseDir {
-  def findBaseDir: Unit = {
+  def findBaseDir() : Unit = {
     var f = (new java.io.File(".")).getAbsoluteFile
     while (f!=null) {
       if ((new java.io.File(f,"Elections")).exists()) {

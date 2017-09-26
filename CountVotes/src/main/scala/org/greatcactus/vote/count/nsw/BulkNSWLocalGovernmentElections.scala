@@ -39,6 +39,9 @@ import org.jsoup.Jsoup
 object AllNSWLocalGovernmentElections2016 extends App {
   ParseNSW2016.parseAll()
 }
+object AllNSWLocalGovernmentElections2017 extends App {
+  ParseNSW2017.parseAll()
+}
 object AllNSWLocalGovernmentElections2012 extends App {
   ParseNSW2012.processAll2012()
 }
@@ -51,7 +54,7 @@ object AllNSWLocalGovernmentElections2012 extends App {
  * Only works 2012 LGE
  */
 object SearchDownloadsDir2012 {
-  val downloads = new File("""C:\Users\Andrew\Downloads""")
+  val downloads = new File("""/home/arc/Downloads""")
   def findPreferenceZipFiles : Map[String,File] = {
     var map : Map[String,File] = Map.empty
     for (f<-downloads.listFiles()) {
@@ -82,8 +85,10 @@ class CacheDir(val dirname:String) {
 }
 
 
+object ParseNSW2016 extends ParseNSW2016format(2016)
+object ParseNSW2017 extends ParseNSW2016format(2017)
 
-object ParseNSW2016 extends NSWLocalData(2012) {
+class ParseNSW2016format(year:Int) extends NSWLocalData(year) {
   import DownloadURL._
   
   def getAndRun[R](path:String,work: java.io.File=>R) : Option[R] = {
@@ -102,8 +107,10 @@ object ParseNSW2016 extends NSWLocalData(2012) {
   
   def getAndRunJsoup[R](path:String,work:Document=>R) : Option[R] = {
     getAndRun(path,jf =>{
-       val doc : Document = Jsoup.parse(jf,"UTF-8")
-       work(doc)
+      val doc : Document = Jsoup.parse(jf,"UTF-8")
+      try {
+        work(doc)
+      } catch { case e:Exception => println("Error with "+path); throw e;}
     }) 
   }
   
@@ -125,8 +132,8 @@ object ParseNSW2016 extends NSWLocalData(2012) {
     
   }
   
-  def parseAll() {
-    val runs = new RunLotsOfContests(2016)
+  def parseAll() { // should work for 2016 and 2017.
+    val runs = new RunLotsOfContests(year)
     getAndRunJSon("/councils.json",classOf[Array[NSW2016Council]],{areas : Array[NSW2016Council] => {
       for (area<-areas) if ((area.status=="NSWEC_Run")&&(restrictCalculatedTo.isEmpty || restrictCalculatedTo.get.contains(area.areaAuthorityName))) {
         println("Area "+area.areaId+"\t"+area.areaAuthorityName)
@@ -142,7 +149,7 @@ object ParseNSW2016 extends NSWLocalData(2012) {
 //              for (name<-names) println("     "+name)
               names.toArray
             }
-            if (ward.isDataAvailable) {              
+            if (ward.isDataAvailable && (restrictWardTo.isEmpty || restrictWardTo.get.contains(ward.id))) {
               if (ward.isMayoral) {
                 val winner = getAndRunJsoup(areaurlbase+"result_mayoral.html",parseResult _)
                 if (winner.isDefined && winner.get.length==1) mayor=Some(winner.get.head)
@@ -171,14 +178,14 @@ object ParseNSW2016 extends NSWLocalData(2012) {
                     val prettyName = area.areaAuthorityName+(if (isWard) " "+ward.name else "")
                     val data = NSWLocal2016IO.loadRaw(ziplist,candidates,groups,prettyName)
                     for (summary<-dopsum) {
-                      // CheckTies.check(summary,candidateNames)
-                      // CheckRounding.check(summary,candidateNames)
+                      CheckTies.check(summary,candidateNames)
+                      CheckRounding.check(summary,candidateNames)
                     }
                     runs.runElection(data, winners.get.toList, false, mayor,dopsum,year) 
                   } else markToBeUpdated(wardUrlBase+"dop_cnt_001.html")
                 } else { markToBeUpdated(wardUrlBase+"result_councillor.html"); markToBeUpdated(wardUrlBase+"candidates_in_sequence.html") }
               }
-            } else if (!(ward.isReferendum||ward.isUncontested)) markToBeUpdated(areaurlbase+"lga.json")
+            } else if (!(ward.isReferendum||ward.isUncontested||ward.isPoll)) markToBeUpdated(areaurlbase+"lga.json")
             if (ward.isUncontested) runs.numUncontested+=1
           }
               /* need to run mayor first */
@@ -200,6 +207,7 @@ class NSW2016LGAWard(val id:String,val realid:String,val name:String,val status:
   def isDataAvailable = isFinal && (status=="Publish_Results" || status=="Declared_Election")
   def isMayoral = id=="mayoral"
   def isReferendum = id=="referendum"
+  def isPoll = id=="poll"
   def isUncontested = status=="Uncontested_Declared_Election"
 }
 
@@ -210,7 +218,7 @@ object RunLotsOfContests {
   val numThreads = 4
   
   val generateStochasticReports = false
-  val useNWSECredistributableRules = false
+  val useNWSECredistributableRules = false // the incorrect rules used accidentally by the NSWEC in the 2012 LGE.
   val useStochastic = true
   val electionRules = new ElectionRules(true,useNWSECredistributableRules,useStochastic)
   
@@ -256,7 +264,7 @@ class RunLotsOfContests(val year:Int) {
 }
 
 class NSWLocalData(val year:Int) {
-  def isCurrent = year==2016
+  def isCurrent = year==2017
   val cacheDir = new CacheDir("Elections/NSW/LGE"+year+"/cache")
   cacheDir.dir.mkdirs()
   val urlBase = if (isCurrent) "http://vtr.elections.nsw.gov.au" else "http://www.pastvtr.elections.nsw.gov.au"
@@ -264,7 +272,8 @@ class NSWLocalData(val year:Int) {
   import DownloadURL._
   def getSource(url:String) : Source = Source.fromFile(cacheFile(url,cacheDir),"utf-8")
   
-  val restrictCalculatedTo : Option[Set[String]] = None // Some(Set("Hawkesbury City Council")) // Some(Set("Griffith"))
+  val restrictCalculatedTo : Option[Set[String]] = None // Some(Set("Northern Beaches","Cumberland","Ku-rin-gai","North Sydney","City of Paramatta","City of Ryde")) // None // Some(Set("Hawkesbury City Council")) // Some(Set("Griffith"))
+  val restrictWardTo : Option[Set[String]] = None // Some(Set("curl-curl-ward","greystanes-ward"))
   val gson = new Gson
 
     /** change Firstname LASTNAME to LASTNAME Firstname */

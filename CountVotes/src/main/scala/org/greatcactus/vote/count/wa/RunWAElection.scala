@@ -25,13 +25,13 @@ object RunWAElection extends App {
   val printDebugMessages:Boolean = true
   val reportDir = new File("WA2016Reports")
   
-  val regions = WAElectionData.loadAllRaw()
+  val regions = WA2017ElectionData.loadAllRaw()
   for (region<-regions) {
     region.data.printStatus()
     println("Enrolment "+region.enrolment)
     //for (g<-region.data.groupInfo) println(g.line)
     val ticketRoundingChoices:Map[String,Int] = Map.empty
-    val ecDeemedOrder:Seq[Int] = List()
+    val ecDeemedOrder:Seq[Int] = WA2017OfficialResults.usedOrders.getOrElse(region.data.name,List.empty)
     val worker = new WAElectionHelper (region.data,region.vacancies,ticketRoundingChoices,ecDeemedOrder,printDebugMessages,Set.empty)
     worker.run()
     ElectionReport.saveReports(new File(reportDir,region.data.name),worker.report,region.data)

@@ -272,6 +272,14 @@ sealed class BTL(/** candidate ids listed in preference order */ val candidates:
   override def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate) = new BTL(candidates.map{c => if (c==fromWho) toWho else if (c==toWho) fromWho else c})
 }
 
+object BTL {
+  def ofPreferencesInCandidateOrder(prefs:Array[Int]) : BTL = {
+    val res = Array.fill(prefs.length)(-1)
+    for (i<-prefs.indices) if (prefs(i)>0) res(prefs(i)-1)=i
+    new BTL(res.takeWhile{_ >= 0})
+  }
+}
+
 class ActualListOfTamperableVotes(val allused:Array[VoteSource],val partiallyUsed:List[(Int,VoteSource)]) {
   /** Split into a list of length n and a list of all others */
   def split(n:Int) : (ActualListOfTamperableVotes,ActualListOfTamperableVotes) = {

@@ -31,7 +31,7 @@ import java.io.InputStreamReader
 
 object RunNSWStateElectionProbabilistically extends App {
   
-  val numTotalRuns = 100
+  val numTotalRuns = 1000
   val numThreads = 4
   
   val votedata = NSWStateElectionData.load(true,true)

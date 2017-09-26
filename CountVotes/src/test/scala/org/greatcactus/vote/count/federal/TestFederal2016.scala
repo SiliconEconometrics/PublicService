@@ -26,7 +26,7 @@ import org.junit.Test;
  */
 class TestFederal2016 {
 
-  FindBaseDir.findBaseDir
+  FindBaseDir.findBaseDir()
 
   def test(state:String,toBeElected:Int,ticketRoundingChoices:Map[String,Int],aecDeemedOrder:Seq[Int],excluded:Set[Int]=Set.empty) {
     val data = FederalElectionData.load2016(state)

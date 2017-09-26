@@ -18,24 +18,16 @@
 package org.greatcactus.vote.count.wa
 
 import java.io.File
-import scala.io.Source
-import java.util.zip.ZipInputStream
-import java.io.FileInputStream
-import java.util.zip.ZipEntry
-import java.util.zip.ZipFile
-import scala.util.Random
-import java.io.InputStreamReader
-import java.io.InputStream
-import java.io.BufferedReader
+
+import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
+
 import scala.collection.mutable.ArrayBuffer
-import scala.xml.XML
 import org.greatcactus.vote.count._
 import org.greatcactus.vote.count.federal.CSVHelper
-import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
 
 object WA2013ElectionData {
 
-  val sourceDir = new File("""Elections/WA/2013/""")
+  val sourceDir = new File(IOUtil.baseDir,"""Elections/WA/2013/""")
   
   
   def loadRegionRaw(region:String) = {
@@ -94,7 +86,7 @@ object WA2013ElectionData {
            if (!v.isEmpty) builder.addVote(i,v.toInt)
          }
          interpreter.addBTL(builder.get)
-       } catch { case e:Exception => println("Error reading "+region+"_BatchesReport.csv BTL vote line number "+helper.lineCount); }
+       } catch { case e:Exception => println("Error "+e.getLocalizedMessage+" reading "+region+"_BatchesReport.csv BTL vote line number "+helper.lineCount); }
     }
     for (l<-helper) l(0) match {
       case "" => btl(l)
@@ -138,7 +130,7 @@ object WA2013ElectionData {
     var lostVotesCum : Int = 0
     val countList = new ArrayBuffer[WA2013SingleCount]
     def saveCount() {
-      countList+=new WA2013SingleCount(prevCount,who,what,candidatePapersTransferred,candidatePapers,candidateVotesTransferred,candidateVotes,lostVotes,lostVotesCum)
+      countList+=new WA2013SingleCount(prevCount,who,what,candidatePapersTransferred,candidatePapers,candidateVotesTransferred,candidateVotes,lostVotes,lostVotesCum,null)
       candidatePapers = null
       candidateVotes = null
       candidateVotesTransferred = null
@@ -146,11 +138,11 @@ object WA2013ElectionData {
     }
     def parsePossiblyBlank = { s:String =>  if (s.isEmpty) 0 else s.toInt }
     for (l<-helper) {
-        if (!l(0).isEmpty()) {
-          if (l(1).isEmpty()) what="First Preferences"
+        if (!l(0).isEmpty) {
+          if (l(1).isEmpty) what="First Preferences"
           else { what = l(1); who=l(2); }
         }
-        if (!l(2).isEmpty()) { 
+        if (!l(2).isEmpty) {
           if (prevCount!=null) saveCount()
           if (l(2)=="Total") prevCount=null
           else { 
@@ -186,7 +178,7 @@ object WA2013ElectionData {
 }
 
 class WA2013WholeCount(val candidates : Array[Candidate],val numFormalVotes:Int,val vacancies:Int,val quota:Int,val counts:Array[WA2013SingleCount])
-class WA2013SingleCount(val countName:String,val who:String,val what:String,val papersDelta:Array[Int],val papersCum:Array[Int],val votesDelta:Array[Int],val votesCum:Array[Int],val lostDelta:Int,val lostCum:Int)
+class WA2013SingleCount(val countName:String,val who:String,val what:String,val papersDelta:Array[Int],val papersCum:Array[Int],val votesDelta:Array[Int],val votesCum:Array[Int],val lostDelta:Int,val lostCum:Int,val electedCandidates:Array[CandidateIndex])
 
 object WA2013 extends App {
   val reportDir = new File("WA2013Reports")

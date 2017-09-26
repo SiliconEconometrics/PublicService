@@ -54,10 +54,10 @@ class WAElectionHelper (data:ElectionData,candidatesToBeElected:Int,ticketRoundi
    *   (b) do order A B C and say the first invocation has precedence
    *   (c) do order A C B and say the second invocation has precedence
    *   (d) interpret it as meaning a consistent ordering, whereby they don't have to all be different, but as soon as one is different in the countback it is dealt with.
-   * I am implementing option (d), but do not know what is correct. To get option (b), set orderSurplusesBasedOnUniqueNumbersInCountback to true (not tested).
+   * I am implementing (b) somewhat arbitrarily. To get option (d), set orderSurplusesBasedOnUniqueNumbersInCountback to false.
    */
   override def getCandidateToDistribute : CandidateIndex = getCandidateToDistributeOrderElected
-  override def orderSurplusesBasedOnUniqueNumbersInCountback : Boolean = false
+  override def orderSurplusesBasedOnUniqueNumbersInCountback : Boolean = true
 
   // Step (5) If not finished, transfer surplus of elected candidates.
   override def transferExcess(candidate:CandidateIndex) {
@@ -140,11 +140,7 @@ class WAElectionHelper (data:ElectionData,candidatesToBeElected:Int,ticketRoundi
   override def finishExclusionEvenIfAllVacanciesFilled : Boolean = false // legislation seems to say this should be true, but WAEC doesn't do it, and it can never change results, so no reason to be upset.
 
  
-  def candidatesForExclusionWithMarginComputation(afterStepCount:Boolean) : List[CandidateIndex] = {
-    val toexclude =continuingCandidates.orderedList.last
-    // println("Excluding candidate "+toexclude)
-    List(toexclude)
-  }
+  def candidatesForExclusionWithMarginComputation(afterStepCount:Boolean) : CandidateToExclude = getCandidateToExcludeWithExplicitCountbackRequiringAllDifferent
   
 
   

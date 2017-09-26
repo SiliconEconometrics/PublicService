@@ -127,9 +127,10 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
   
   // step (13AA) federal
   /** Perform the exclusion of given candidates */
-  def excludeCandidates(candidates:List[CandidateIndex]) {
-            
-    var choiceWasArbitary : Option[Set[CandidateIndex]] = continuingCandidates.couldAECHaveToMakeDecision(candidates.head)
+  def excludeCandidates(candidateToExclude:CandidateToExclude) {
+
+    val candidates:List[CandidateIndex] = candidateToExclude.candidateToExclude
+    var choiceWasArbitary : Option[Set[CandidateIndex]] = candidateToExclude.tiesBetweenBrokenByECChoice // continuingCandidates.couldAECHaveToMakeDecision(candidates.head)
 
     continuingCandidates--=candidates
     // (13AA)(a) transfer TV=1 votes with TV 1, can be done
@@ -171,7 +172,7 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
   }
 
   /** Get the list of candidates to exclude */
-  def candidatesForExclusionWithMarginComputation(afterStepCount:Boolean) : List[CandidateIndex] 
+  def candidatesForExclusionWithMarginComputation(afterStepCount:Boolean) : CandidateToExclude
 
   def getCandidateToDistribute : CandidateIndex
   def getCandidateToDistributeOrderElected : CandidateIndex = candidatesToHaveSurplusDistributed.dequeue()
@@ -207,6 +208,38 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
     while (remainingVacancies>0) distributeOrExclude()  
     report.freeReferencesWhenAllDone()    
   }
-  
-  
+
+
+  /**
+    * Find a candidate to exclude, with tie resolution based on a countback, where all candidates have to have a different value
+    * for the countback to work.
+    * @return
+    */
+  def getCandidateToExcludeWithExplicitCountbackRequiringAllDifferent : CandidateToExclude = {
+    val excludeScore = tallys(continuingCandidates.orderedList.last)
+    val tied = continuingCandidates.orderedList.filter{tallys(_)==excludeScore}
+    if (tied.length==1) new CandidateToExclude(tied,None)
+    else {
+      // do a count back
+      for (r<-report.history.reverseIterator) {
+        val subtallys = tied.map{r.totalAtEnd(_).toInt}
+        if (subtallys.toSet.size==tied.length) { // all have different values
+          val min = subtallys.min
+          println("Found "+tied.length+" different values, count = "+report.getPrettyCountName)
+          for (c<-tied) if (r.totalAtEnd(c).toInt==min) return new CandidateToExclude(List(c),None)
+          throw new IllegalStateException("Should not get here")
+        }
+      }
+      // choose randomly (or at least based on the EC choice)
+      val randomlyChosen = ecDeemedOrder.reverseIterator.find(tied.contains).getOrElse({
+        println("EC deemed order does not distinguish between "+tied.mkString(","))
+        tied.head
+      })
+      new CandidateToExclude(List(randomlyChosen),Some(tied.toSet))
+    }
+  }
+
+  class CandidateToExclude(val candidateToExclude: List[CandidateIndex],val tiesBetweenBrokenByECChoice : Option[Set[CandidateIndex]])
+
+
 }
