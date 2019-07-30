@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,22 +17,16 @@
  */
 
 package org.greatcactus.vote.count.nsw
-import org.greatcactus.vote.count._
 
-import javax.swing.SwingUtilities
-import javax.swing.JFrame
-import javax.swing.JPanel
+import org.greatcactus.vote.count._
+import javax.swing.{JButton, JEditorPane, JFileChooser, JFormattedTextField, JFrame, JLabel, JPanel, SwingUtilities, UIManager, WindowConstants}
 import java.awt.BorderLayout
-import javax.swing.JButton
 import java.awt.event.ActionListener
 import java.awt.event.ActionEvent
-import javax.swing.JFileChooser
 import java.io.File
-import javax.swing.JEditorPane
-import javax.swing.JFormattedTextField
 import java.awt.GridLayout
-import javax.swing.JLabel
-import javax.swing.UIManager
+
+import org.greatcactus.vote.count.ballots.ElectionData
 
 object NSWLocalElectionGUI extends App {
    SwingUtil.inSwingThread(new NSWElectionGUIInfo)
@@ -70,7 +64,7 @@ class NSWElectionGUIInfo {
   }
 
   val frame = new JFrame("NSW Local government 2012")
-  frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+  frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
   val pane = frame.getContentPane()
   val optionsPane = new JPanel(new GridLayout(0,2))
   val fileChooser = new JButton("Choose a .zip file containing election data")
@@ -134,7 +128,7 @@ class NSWElectionGUIInfo {
   }
 
   @volatile var voteData : Option[ElectionData] = None
-  def voteDataInfo : Option[String] = for (data<-voteData) yield "<p><b>Successfully loaded data for "+data.name+"</b>. "+data.candidates.length+" candidates and "+data.totalFormalVotes+" formal votes.</p>" 
+  def voteDataInfo : Option[String] = for (data<-voteData) yield "<p><b>Successfully loaded data for "+data.meta.electionName.shortPrintName+"</b>. "+data.candidates.length+" candidates and "+data.totalFormalVotes+" formal votes.</p>"
   
   def setText(text:String) { SwingUtil.inSwingThread(resultsPane.setText(text)) }
   

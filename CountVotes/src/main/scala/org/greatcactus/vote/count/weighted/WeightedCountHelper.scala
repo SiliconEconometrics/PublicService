@@ -1,5 +1,5 @@
 /*
-    Copyright 2016-2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2016-2018 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -19,15 +19,9 @@
 package org.greatcactus.vote.count.weighted
 
 import org.greatcactus.vote.count._
-import org.greatcactus.vote.count.weighted._
 import org.greatcactus.vote.count.MainDataTypes._
-
-import scala.collection.immutable.Queue
-import scala.collection.mutable.ArrayBuffer
-import scala.collection.GenTraversableOnce
-import java.util.Arrays
-import scala.collection.mutable.ListBuffer
-
+import org.greatcactus.vote.count.ballots.{DVote, ElectionData, ElectionDataFastIO}
+import org.greatcactus.vote.count.margin.{ElectionChanged, Margin, NormalElectionOutcome, Tampering}
 
 
 /**
@@ -35,6 +29,8 @@ import scala.collection.mutable.ListBuffer
  * http://www.austlii.edu.au/au/legis/cth/consol_act/cea1918233/s273.html
  */
 abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:Int,ticketRoundingChoices:Map[String,Int],ecDeemedOrder:Seq[CandidateIndex],val printDebugMessages:Boolean,ineligibleCandidates:Set[CandidateIndex]=Set.empty) {
+
+  var wantToComputeMargins:Boolean = false
   val numCandidates : Int = data.candidates.length
   val continuingCandidates : ContinuingCandidates = new ContinuingCandidates(ecDeemedOrder,numCandidates)
   continuingCandidates--=ineligibleCandidates
@@ -44,15 +40,15 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
   // Distribute votes to first preferences
   val originalVotes : PlainVotes = {
     val votes : Array[DVote] = for (v<-data.makeVotes(ticketRoundingChoices)) yield new DVote(0,v.numVoters,v.preferences,v.src).skipNotContinuingCandidates(continuingCandidates.set)
-    // DVote.saveMichelleFormat(new java.io.File("Michele/"+data.name+data.year+".txt"),votes)
+    //DVote.saveMichelleFormat(new java.io.File("Michele/"+data.meta.electionName.longFileName+".txt"),votes,data)
     val res = new PlainVotes
     res.add(votes)
     res
   }
-  def shouldSeparateBallotsBySourceCountNumber : Boolean 
+  def shouldSeparateBallotsBySourceCountNumber : HowSplitByCountNumber
   val ballots : Array[WeightedVotes] = originalVotes.splitByNextContinuing(continuingCandidates)._1.map{pv=>{val res = new WeightedVotes(shouldSeparateBallotsBySourceCountNumber); res.add(pv,1.0,1,pv.numBallots);res }}
   val tallys : Array[Tally] = ballots.map{_.numBallots}
-  val firstPreferences : Array[Tally] = Arrays.copyOf(tallys,tallys.length)
+  val firstPreferences : Array[Tally] = java.util.Arrays.copyOf(tallys,tallys.length)
   val report = new ElectionResultReport(data.candidates,ineligibleCandidates,printDebugMessages)
   report.setTallyFunction{i=>tallys(i)}
   report.setPapersFunction({i=>ballots(i).numBallots},{i=>ballots(i).numBallotsATL})
@@ -60,8 +56,8 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
   report.useMajorCountNo = reportsShouldUseMajorCountNumber
 
   // determine quota
-  val numFormalVotes = tallys.sum 
-  def computeQuota(numFormalVotes:Int,candidatesToBeElected:Int) = numFormalVotes/(1+candidatesToBeElected)+1
+  val numFormalVotes: Tally = tallys.sum
+  def computeQuota(numFormalVotes:Int,candidatesToBeElected:Int): Tally = numFormalVotes/(1+candidatesToBeElected)+1
   val quota : Int = computeQuota(numFormalVotes:Int,candidatesToBeElected:Int)
   report.quota=quota
   report.initialCountDone()
@@ -76,13 +72,15 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
   def orderSurplusesBasedOnUniqueNumbersInCountback : Boolean = false
   def applyHighestOfLastTwoIfInTheMiddleOfAMultistageEliminationOrRedistribution = false
  
-  def endCountReorderAndCheckElected(/* true if in the middle of a multi-part transfer where highest-of-last-two should not be applied */ exclusionOrDistributionInProgress:Boolean) {
+  def endCountReorderAndCheckElected(/* true if in the middle of a multi-part transfer where highest-of-last-two should not be applied */ exclusionOrDistributionInProgress:Boolean): Unit = {
     continuingCandidates.reorder(tallys)
     // (18)  Notwithstanding any other provision of this section, where the number of continuing candidates is equal to the number of remaining unfilled vacancies, those candidates shall be elected.
-    if (continuingCandidates.length==remainingVacancies && !(finishExclusionEvenIfAllWillBeElected && exclusionOrDistributionInProgress) && !(finishSuplusDistributionEvenIfEveryoneWillGetElected&& !candidatesToHaveSurplusDistributed.isEmpty) ) for (c<-continuingCandidates.orderedList) declareElected(c,"Remaining")
+    if (continuingCandidates.length==remainingVacancies && !(finishExclusionEvenIfAllWillBeElected && exclusionOrDistributionInProgress) && !(finishSuplusDistributionEvenIfEveryoneWillGetElected&& candidatesToHaveSurplusDistributed.nonEmpty) ) for (c<-continuingCandidates.orderedList) declareElected(c,"Remaining")
     //  (17)  In respect of the last vacancy for which two continuing candidates remain, the continuing candidate who has the larger number of votes shall be elected notwithstanding that that number is below the quota, and if those candidates have an equal number of votes the Australian Electoral Officer for the State shall have a casting vote but shall not otherwise vote at the election.
     if (continuingCandidates.length==2 && remainingVacancies==1 && candidatesToHaveSurplusDistributed.isEmpty && (applyHighestOfLastTwoIfInTheMiddleOfAMultistageEliminationOrRedistribution | !exclusionOrDistributionInProgress)) { // note if you don't have the candidatesToHaveSurplusDistributed.isEmpty you can get different results. This may be a bug in the legislation.
-      val _ = candidatesForExclusionWithMarginComputation(true) // run for side effect of computing margins
+      if (wantToComputeMargins) {
+        Tampering.lookForOportunitiesToTamperThisRound(this,candidatesForExclusion.candidateToExclude,normalElectionOutcome,afterStepCount = true)
+      }
       declareElected(continuingCandidates.head,"Highest of remaining 2")
     }
     val reachedQuota = continuingCandidates.orderedList.filter{tallys(_)>=quota}
@@ -100,7 +98,37 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
     currentCountNumber+=1
   }
   endCountReorderAndCheckElected(false)
-  def transferExcess(candidate:CandidateIndex) 
+  def transferExcess(candidate:CandidateIndex)
+
+
+  /** Transfer a surplus to other candidates in one transfer by giving each vote an equal transfer value. Used by AEC and VEC. */
+  def transferSurplusAllWithSameTransferValue(candidate:CandidateIndex): Unit = {// AEC Step (9) If not finished, transfer surplus of elected candidates.
+    // AEC 9a compute transfer value
+    val rawvotes : PlainVotes = ballots(candidate).asPlain
+    val surplus = tallys(candidate)-quota
+    val transferValue = surplus.toDouble/rawvotes.numBallots
+    val transferValueDescription = new TransferValueComputationSingleValue(surplus,rawvotes.numBallots,0,transferValue)
+    // AEC 9b distribute
+    val (distributedToCandidate : Array[PlainVotes],numExhausted:Tally) = rawvotes.splitByNextContinuing(continuingCandidates)
+    val exhaustedTally = roundDownRecordRounding(numExhausted*transferValue)
+    report.declareCandidateDistributed(candidate, surplus, rawvotes.numBallots, transferValueDescription,Nil,  rawvotes.numBallots, 0, exhaustedTally,distributedMakesSense = false)
+    report.addExhaustedVotes(exhaustedTally)
+    report.addExhaustedPapers(numExhausted)
+    tallys(candidate)=quota
+    ballots(candidate).clear()
+    if (transferValue>0) { // (AEC 25)
+      for (nextChoice<-continuingCandidates.orderedList) {
+        val giveVotes : PlainVotes = distributedToCandidate(nextChoice)
+        val tally = roundDownRecordRounding(transferValue*giveVotes.numBallots)
+        ballots(nextChoice).add(giveVotes, transferValue, currentCountNumber,tally)
+        tallys(nextChoice)+=tally
+      }
+    }
+    clearRoundingPending()
+    endCountReorderAndCheckElected(false)
+    report.finishMajorCount()
+  }
+
 
   def roundDownNoTellRounding(v:Double) : Tally = (v+1e-15).toInt
   var roundingPending : Double = 0.0
@@ -139,7 +167,7 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
     val (lastTV,lastFC) = orderedWork.lastOption.map{_._1}.getOrElse((0,0))
     for (((transferValue:TransferValue,fromCount),votes:PlainVotes)<-orderedWork) if (remainingVacancies>0 || finishExclusionEvenIfAllVacanciesFilled) { 
       report.declareCandidatesExcluded(candidates, votes.whereCameFrom,transferValue)
-      if (shouldSeparateBallotsBySourceCountNumber) report.fromCountReference(fromCount)
+      if (shouldSeparateBallotsBySourceCountNumber eq FullySplitByCountNumber) report.fromCountReference(fromCount)
       for (disambiguate<-choiceWasArbitary) report.addECDecision(disambiguate)
       choiceWasArbitary=None // only report on first page
       for (c<-candidates) {
@@ -172,7 +200,9 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
   }
 
   /** Get the list of candidates to exclude */
-  def candidatesForExclusionWithMarginComputation(afterStepCount:Boolean) : CandidateToExclude
+  def candidatesForExclusion : CandidateToExclude
+  /** Used when looking for margins. Computes the candidate to exclude if the ordered candidates and tallys were different. It's not a disaster if this is not perfectly accurate, although it is helpful. */
+  def hypotheticalCandidatesForExclusion(newOrdered: List[CandidateIndex], newTallys: Array[Tally]) : List[CandidateIndex] = List(newOrdered.last)
 
   def getCandidateToDistribute : CandidateIndex
   def getCandidateToDistributeOrderElected : CandidateIndex = candidatesToHaveSurplusDistributed.dequeue()
@@ -199,16 +229,35 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
   }
     
   def distributeOrExclude() {
-    if (candidatesToHaveSurplusDistributed.isEmpty) excludeCandidates(candidatesForExclusionWithMarginComputation(false))
-    else transferExcess(getCandidateToDistribute)
-  }
-  
-  def run() {
-    if (printDebugMessages) println("Running count for "+data.name)
-    while (remainingVacancies>0) distributeOrExclude()  
-    report.freeReferencesWhenAllDone()    
+    if (candidatesToHaveSurplusDistributed.isEmpty) {
+      val toExclude = candidatesForExclusion
+      if (wantToComputeMargins) {
+        Tampering.lookForOportunitiesToTamperThisRound(this,toExclude.candidateToExclude,normalElectionOutcome,afterStepCount = false)
+      }
+      excludeCandidates(toExclude)
+    } else transferExcess(getCandidateToDistribute)
   }
 
+  /** Save reports of best margins. */
+  def rerunModifiedVersions(marginReportLocation:ReportSaver) {
+    for (((delta,properties),margin)<-report.marginsRecorder.best) {
+      val name = properties.toString+delta.desc(data.candidates)
+      rerunElectionWithModifiedData(Some(margin),name,Some(SaveReportsForNewRunOfElection(marginReportLocation.subdir(name),saveReports = true,saveDatafile = true)))
+    }
+  }
+
+
+  def run(marginReportLocation:Option[ReportSaver]=None): Unit = {
+    this.wantToComputeMargins = marginReportLocation.isDefined
+    if (printDebugMessages) println("Running count for "+data.meta.electionName.shortPrintName)
+    while (remainingVacancies>0) distributeOrExclude()  
+    report.freeReferencesWhenAllDone()
+    afterRunningStatistics()
+    for (mrl<-marginReportLocation) rerunModifiedVersions(mrl.subdir("Tampering"))
+  }
+
+  /** IF there is some analysis to do after running the election, do it here. */
+  def afterRunningStatistics(): Unit = { }
 
   /**
     * Find a candidate to exclude, with tie resolution based on a countback, where all candidates have to have a different value
@@ -241,5 +290,30 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
 
   class CandidateToExclude(val candidateToExclude: List[CandidateIndex],val tiesBetweenBrokenByECChoice : Option[Set[CandidateIndex]])
 
+  // TODO remove ??? and implement everywhere used.
+  /** Get a new worker that could be used to recount the election, with the provided data which may or may not be the same as the current data. */
+  def newWorker(newdata:ElectionData):WeightedCountHelper = ???
+
+  /** Rerun the election, with some changes specified by margin. Return the candidates elected. */
+  def rerunElectionWithModifiedData(changes:Option[Margin], name:String,reportLocation:Option[SaveReportsForNewRunOfElection]) : NormalElectionOutcome = {
+    val newdata = changes match {
+      case Some(margin) => data.tamper(margin,"_tamper_exclude_"+name)
+      case None => data
+    }
+    val newworker = newWorker(newdata)
+    newworker.run(None)
+    for (SaveReportsForNewRunOfElection(baseDir:ReportSaver,saveReports:Boolean, saveDatafile:Boolean)<-reportLocation) {
+      val dir = baseDir.subdir(name)
+      if (saveReports) ElectionReport.saveReports(dir,newworker.report,newdata)
+      if (saveDatafile) dir.write(newdata.meta.electionName.shortFileName+".txt",w=>ElectionDataFastIO.savePickled(newdata,w))
+    }
+    val winners = newworker.report.electedCandidates.toList
+    val stillIn = newworker.continuingCandidates.orderedList.filterNot(winners.contains)
+    new NormalElectionOutcome(winners,stillIn)
+  }
+
+  lazy val normalElectionOutcome: NormalElectionOutcome = rerunElectionWithModifiedData(None,"normaladvance",None)
 
 }
+
+case class SaveReportsForNewRunOfElection(baseDir:ReportSaver,saveReports:Boolean, saveDatafile:Boolean)

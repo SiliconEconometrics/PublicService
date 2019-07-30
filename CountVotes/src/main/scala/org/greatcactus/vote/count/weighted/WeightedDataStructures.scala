@@ -21,8 +21,10 @@
  */
 
 package org.greatcactus.vote.count.weighted
-import org.greatcactus.vote.count._
+
 import org.greatcactus.vote.count.MainDataTypes._
+import org.greatcactus.vote.count.ballots.{ActualListOfTamperableVotes, DVote}
+
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.GenTraversableOnce
 
@@ -81,33 +83,39 @@ class PlainVotes {
     this.roundedTally+=moreVotes.roundedTally
   }
   def whereCameFrom : List[CountNumber] = countsOriginating.toList.sorted
-  def getRoundedTally = roundedTally
-  
+  def getRoundedTally: Tally = roundedTally
+
+  private def getTamperable(owningCandidatePositionInParty:Int,isATL:Boolean,allow1Prefs:Boolean) : Array[DVote] = {
+    allVotes.filter(v=>{
+      val okATL = isATL == v.src.isATL
+      val ok1Pref = allow1Prefs || !v.isStillOnFirstPreference(owningCandidatePositionInParty)
+      okATL && ok1Pref
+    }).to[Array]
+  }
   /** Number that are hard to detect tampering with at this point - eg first preference, 1 ATL */
-  def numTamperablePapers(owningCandidatePositionInParty:Int,atl:Boolean) : Int = {
-    var res = 0
-    for (v<-allVotes) {
-      val isTamperable = (v.upto!=0) /* first preference */ && v.src.isTamperable(v.upto == owningCandidatePositionInParty,atl)
-      if (isTamperable) res+=v.numVoters.toInt
-    }
-    res
+  def numTamperablePapers(owningCandidatePositionInParty:Int,isATL:Boolean,allow1Prefs:Boolean) : Int = {
+    getTamperable(owningCandidatePositionInParty,isATL,allow1Prefs).map{_.numVoters.toInt}.sum
   }
-  def saveMichelleFormat(file:java.io.File) { DVote.saveMichelleFormat(file, allVotes) }
-  def getActualListOfTamperableVotes(owningCandidatePositionInParty:Int,atl:Boolean) : ActualListOfTamperableVotes = {
-    val okvotes  = allVotes.filter({v=>(v.upto!=0) /* first preference */ && v.src.isTamperable(v.upto == owningCandidatePositionInParty,atl)})
-    new ActualListOfTamperableVotes(okvotes.map{_.src}(collection.breakOut),Nil)
+  def getActualListOfTamperableVotes(owningCandidatePositionInParty:Int,isATL:Boolean,allow1Prefs:Boolean) : ActualListOfTamperableVotes = {
+    val okvotes = getTamperable(owningCandidatePositionInParty,isATL,allow1Prefs)
+    new ActualListOfTamperableVotes(okvotes.map{_.src},Nil)
   }
-  def getActualListOfAllVotes(wantATL:Boolean) : ActualListOfTamperableVotes = new ActualListOfTamperableVotes(allVotes.map{_.src}.toArray.filter{_.isATL == wantATL},Nil)
-  def papersLostToRounding(tv:TransferValue) = Math.floor(tv*numBallots).toInt-getRoundedTally
+  //def getActualListOfAllVotes(wantATL:Boolean) : ActualListOfTamperableVotes = new ActualListOfTamperableVotes(allVotes.map{_.src}.toArray.filter{_.isATL == wantATL},Nil)
+  def papersLostToRounding(tv:TransferValue): Int = Math.floor(tv*numBallots).toInt-getRoundedTally
 }
-class WeightedVotes(val splitByCountNumber:Boolean) {
+sealed abstract class HowSplitByCountNumber { def key(num:CountNumber) : Int }
+object DoNotSplitByCountNumber extends HowSplitByCountNumber  { override def key(num:CountNumber) : Int = 0 }
+object FullySplitByCountNumber extends HowSplitByCountNumber  { override def key(num:CountNumber) : Int = num }
+object OnlySplitByCountNumberIfOne extends HowSplitByCountNumber  { override def key(num:CountNumber) : Int = if (num==1) 1 else 2 }
+
+class WeightedVotes(val splitByCountNumber:HowSplitByCountNumber) {
   private val map = new collection.mutable.HashMap[(TransferValue,CountNumber),PlainVotes]
   def asPlain : PlainVotes = {
     val res = new PlainVotes
     for (v<-map.values) res.addWithoutChangingCountIndex(v)
     res
   }
-  private def pv(transferValue:TransferValue,countIndex:CountNumber) : PlainVotes = map.getOrElseUpdate((transferValue,if (splitByCountNumber) countIndex else 0),new PlainVotes)
+  private def pv(transferValue:TransferValue,countIndex:CountNumber) : PlainVotes = map.getOrElseUpdate((transferValue,splitByCountNumber.key(countIndex)),new PlainVotes)
   def add(moreVotes:PlainVotes,transferValue:TransferValue,countIndex:CountNumber,roundedTally:Int) {
     if (moreVotes.numBallots>0) pv(transferValue,countIndex).add(moreVotes,countIndex,roundedTally)
   }
@@ -115,19 +123,20 @@ class WeightedVotes(val splitByCountNumber:Boolean) {
   def numBallotsATL : Int = map.values.toList.map{_.numBallotsATL}.sum
   def computeExactTally : Double = (for (((weight,_),votes)<-map) yield weight*votes.numBallots).sum
   def roundedTally : Tally = map.values.map{_.getRoundedTally}.sum
-  def lostToRounding = computeExactTally-roundedTally
+  def lostToRounding: TransferValue = computeExactTally-roundedTally
   def + (other:WeightedVotes) : WeightedVotes = {
     var res = new WeightedVotes(splitByCountNumber)
     res+=this
     res+=other
     res
   }
-  def += (other:WeightedVotes) = {
+  def += (other:WeightedVotes): Unit = {
     for (((weight,countInd),votes)<-other.map) pv(weight,countInd).addWithoutChangingCountIndex(votes)
   }
   def sortedByCountNumber : List[((TransferValue,CountNumber),PlainVotes)]  = map.toList.sortBy{_._1._2}
   def sortedByWeight : List[((TransferValue,CountNumber),PlainVotes)] = map.toList.sortBy{- _._1._1}
-  def removeTransferValue(tv:TransferValue) { 
+  def sortedByWeightThenCountNumber : List[((TransferValue,CountNumber),PlainVotes)] = sortedByCountNumber.sortBy{- _._1._1}
+  def removeTransferValue(tv:TransferValue) {
     val toremove = map.keys.filter{_._1==tv}
     map--=toremove
   }
@@ -150,26 +159,28 @@ class WeightedVotes(val splitByCountNumber:Boolean) {
     }
     if (togo==0) Some(res) else None
   }*/
-  def getTamperableVotes(owningCandidatePositionInParty:Int,wantActualVotes:Boolean,allowATL:Boolean) : List[TamperableVotes] = {
-    def get(atl:Boolean) : List[TamperableVotes] = (for (((tv,_),votes)<-map) yield new TamperableVotes(tv,votes.numTamperablePapers(owningCandidatePositionInParty,atl),if (wantActualVotes) Some(votes.getActualListOfTamperableVotes(owningCandidatePositionInParty,atl)) else None,votes.papersLostToRounding(tv),atl)).toList
+  def getTamperableVotes(owningCandidatePositionInParty:Int,wantActualVotes:Boolean,allowATL:Boolean,allow1Prefs:Boolean) : List[TamperableVotes] = {
+    def get(atl:Boolean) : List[TamperableVotes] = (for (((tv,_),votes)<-map) yield
+      new TamperableVotes(tv,votes.numTamperablePapers(owningCandidatePositionInParty,atl,allow1Prefs),if (wantActualVotes) Some(votes.getActualListOfTamperableVotes(owningCandidatePositionInParty,atl,allow1Prefs)) else None,votes.papersLostToRounding(tv),atl,allow1Prefs)).toList
     val btl = get(false)
     val unsorted = if (allowATL) btl++get(true) else btl
     unsorted.filter{_.papers>0}.sortBy { - _.tv }
   }
-  def getTamperableVotesConsideringEverythingTamperable(wantActualVotes:Boolean) : List[TamperableVotes] = {
-    val unsorted = for (((tv,_),votes)<-map;atl<-List(false,true)) yield new TamperableVotes(tv,if (atl) votes.numBallotsATL else votes.numBallotsBTL,if (wantActualVotes) Some(votes.getActualListOfAllVotes(atl)) else None,votes.papersLostToRounding(tv),atl)
+/*
+  def getTamperableVotesConsideringEverythingTamperable(wantActualVotes:Boolean,allowATL:Boolean) : List[TamperableVotes] = {
+    val unsorted = for (((tv,_),votes)<-map;atl<-List(false,true)) yield new TamperableVotes(tv,if (atl) votes.numBallotsATL else votes.numBallotsBTL,if (wantActualVotes) Some(votes.getActualListOfAllVotes(atl)) else None,votes.papersLostToRounding(tv),atl,true)
     unsorted.toList.sortBy { - _.tv }
-  }
+  }*/
 }
 
 
-class TamperableVotes(val tv:Double,val papers:Int,val src:Option[ActualListOfTamperableVotes],val maxPapersLostToRounding:Int,val isAboveTheLine:Boolean) {
+class TamperableVotes(val tv:Double,val papers:Int,val src:Option[ActualListOfTamperableVotes],val maxPapersLostToRounding:Int,val isAboveTheLine:Boolean,val requiresAlteringFirstPreference:Boolean) {
   val votes:Tally = (Math.floor(tv*papers).toInt-maxPapersLostToRounding) max 0
-  def scaleVotesBackTo(wantedVotes:Int) = {
+  def scaleVotesBackTo(wantedVotes:Int): TamperableVotes = {
     val newPapers = Math.ceil(wantedVotes/tv).toInt
-    new TamperableVotes(tv,newPapers,src.map{_.split(newPapers)._1},maxPapersLostToRounding,isAboveTheLine)
+    new TamperableVotes(tv,newPapers,src.map{_.split(newPapers)._1},maxPapersLostToRounding,isAboveTheLine,requiresAlteringFirstPreference)
   }
-  override def toString = papers.toString+"->"+votes
+  override def toString: String = papers.toString+"->"+votes
 }
 
 
@@ -199,13 +210,13 @@ class ContinuingCandidates(aecDeemedOrder:Seq[Int],val numCandidates:Int) {
     orderedList = orderedList.sortBy { -tallys(_) } // relies on it being a stable sort to break ties correctly.
     // deal with aecDeemedOrderMatters
     aecDeemedOrderMatters=aecDeemedOrderMatters.flatMap{s=>
-      s.groupBy { tallys(_)  }.map{_._2}.filter { _.size> 1 }
+      s.groupBy { tallys(_)  }.values.filter { _.size> 1 }
     }
   }
   def top(n:Int) : List[CandidateIndex] = orderedList.take(n)
   def head:CandidateIndex = orderedList.head
   /** Get this candidate and ones lower in the list */
   def candidateAndLower(candidate:CandidateIndex) : List[CandidateIndex] = orderedList.dropWhile { _ != candidate }
-  def length = orderedList.length
+  def length: Tally = orderedList.length
 }
 

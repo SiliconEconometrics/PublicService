@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -18,7 +18,9 @@
 
 
 package org.greatcactus.vote.count.nsw
+
 import org.greatcactus.vote.count._
+import org.greatcactus.vote.count.ballots.ElectionData
 
 
 object PreferencesStats extends App {
@@ -48,8 +50,8 @@ object PreferencesStats extends App {
     for (i<-to) println(data.candidates(i).name+"\t"+prefTo(i))
   }
   
-  proc(NSWStateElectionData.load(true,true))
+  proc(NSWStateElectionData2015.load(true,true))
   println("\n\nIVOTE\n")
-  proc(NSWStateElectionData.load(true,false))
+  proc(NSWStateElectionData2015.load(true,false))
 
 }

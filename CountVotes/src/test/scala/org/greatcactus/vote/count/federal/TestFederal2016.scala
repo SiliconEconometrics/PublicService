@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2018 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -18,8 +18,9 @@
 package org.greatcactus.vote.count.federal
 
 import org.greatcactus.vote.count._
+import org.greatcactus.vote.count.federal.parsing.FederalElectionDataLoader2016
 import org.junit.Assert._
-import org.junit.Test;
+import org.junit.Test
 
 /**
  * Test my algorithm against official distribution of preferences
@@ -29,14 +30,14 @@ class TestFederal2016 {
   FindBaseDir.findBaseDir()
 
   def test(state:String,toBeElected:Int,ticketRoundingChoices:Map[String,Int],aecDeemedOrder:Seq[Int],excluded:Set[Int]=Set.empty) {
-    val data = FederalElectionData.load2016(state)
+    val data = FederalElectionDataLoader2016.load(state)
     data.printStatus()
-    val officialResults = FederalElectionData.readOfficialResults2016(data)
-    val worker = new FederalSenateCountHelper(data,toBeElected,ticketRoundingChoices,aecDeemedOrder,WhatMarginInformationToCompute.none,true,excluded,true,true,true) // compare without multiple exclusions
+    val officialResults = FederalElectionDataLoader2016.readOfficialResults2016(data)
+    val worker = new FederalSenateCountHelper(data,toBeElected,ticketRoundingChoices,aecDeemedOrder,true,excluded,true,true,true) // compare without multiple exclusions
     worker.run(None)
     val myreport = worker.report
 
-    for (countNo<-0 until officialResults.counts.length) {
+    for (countNo<-officialResults.counts.indices) {
       val desc = "Count "+(countNo+1)
       val official = officialResults.counts(countNo)
       if (myreport.history.length<=countNo) fail("My report is too short, only "+myreport.history.length+" expecting "+officialResults.counts.length)

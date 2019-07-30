@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2018 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,10 +17,13 @@
  */
 
 package org.greatcactus.vote.count.nsw
+
 import org.greatcactus.vote.count._
 
 import scala.util.Random
 import java.io.File
+
+import org.greatcactus.vote.count.ballots.{Candidate, ElectionData}
 
 
 
@@ -119,9 +122,10 @@ object ProbabilisticWork {
      
      if (officialDOP.isDefined) {
        val (extremeness,pValue) = dist.extremeness(officialDOP.get)
-       pendingExtremenessReports+= ((votedata.name,extremeness,pValue))
-       println(votedata.name+" Official DOP extremeness "+extremeness+" pValue="+pValue)
-       scala.xml.XML.save(new File(extremenessDir,votedata.name+".html").toString, dist.extremenessReport(officialDOP.get, votedata.candidates.map{_.name}, votedata.name))
+       val name = votedata.meta.electionName.shortPrintName
+       pendingExtremenessReports+= ((name,extremeness,pValue))
+       println(name+" Official DOP extremeness "+extremeness+" pValue="+pValue)
+       scala.xml.XML.save(new File(extremenessDir,name+".html").toString, dist.extremenessReport(officialDOP.get, votedata.candidates.map{_.name}, name))
        
        //if (pValue<0.1) {
       //   dist.printoutDetailedExtremeness(officialDOP.get,votedata.candidates.map{_.name})

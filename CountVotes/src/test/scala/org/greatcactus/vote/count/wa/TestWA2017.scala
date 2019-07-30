@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2018 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,8 +17,9 @@
  */
 package org.greatcactus.vote.count.wa
 
-import org.greatcactus.vote.count.{ElectionCountReport, ElectionResultReport, FindBaseDir}
 import org.greatcactus.vote.count.MainDataTypes._
+import org.greatcactus.vote.count.wa.parsing.{WA2017ElectionData, WA2017OfficialResults, WARegion}
+import org.greatcactus.vote.count.{ElectionCountReport, FindBaseDir}
 import org.junit.Assert._
 import org.junit.Test;
 
@@ -71,7 +72,7 @@ class TestWA2017 {
       addDeltas(my)
       val desc = "Count "+official.who+" "+official.what + " "+my.prettyCountName
 
-      if (data.name == "Mining and Pastoral") {
+      if (data.meta.electionName.electorate == "Mining and Pastoral") {
         // don't check things. I disagree with the official results. See comment at start of test class.
       } else {
         // test what the count is about
@@ -99,7 +100,7 @@ class TestWA2017 {
 
   @Test def testAll(): Unit = {
     val data = WA2017ElectionData.loadAllRaw()
-    for (region<-data) test(region,WA2017OfficialResults.usedOrders.getOrElse(region.data.name,List.empty))
+    for (region<-data) test(region,WA2017OfficialResults.usedOrders.getOrElse(region.data.meta.electionName.electorate,List.empty))
   }
 }
 

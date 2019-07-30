@@ -25,17 +25,16 @@ import java.io._
 
 import scala.collection.mutable.ListBuffer
 import org.greatcactus.vote.count.nsw.VotesToBeTransferred
-import org.greatcactus.vote.count.federal.ElectionChanged
-import org.greatcactus.vote.count.federal.MarginTypes
-import org.greatcactus.vote.count.federal.Margin
+import org.greatcactus.vote.count.margin.{BestMarginsRecorder, ElectionChanged, Margin, MarginProperties, NormalElectionOutcome}
 import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
 import org.greatcactus.vote.count.MainDataTypes.Tally
+import org.greatcactus.vote.count.ballots.{Candidate, ElectionData, ElectionMetadata}
 
 import scala.collection.AbstractSeq
 
 object ToTextUtil {
-  def blankIfZero(num:Double) = if (num==0) "" else stringOfVoteCount(num)
-  def stringOfVoteCount(num:Double) = {
+  def blankIfZero(num:Double): String = if (num==0) "" else stringOfVoteCount(num)
+  def stringOfVoteCount(num:Double): String = {
     val eps = 1e-8
     val intv = (num+eps*num.signum).toInt
     if ((intv-num).abs<eps) intv.toString else num.toString
@@ -46,18 +45,20 @@ import ToTextUtil._
 
 object ElectionReport {
 
+  val reportCSS : Array[Byte] = IOUtil.loadResource("report.css")
+
   def createCSS(dir:File) {
-    IOUtil.copyFile(new File("report.css"),new File(dir,"report.css"))
+    IOUtil.saveFile(new File(dir,"report.css"),reportCSS)
   }
   def createCSS(saver: ReportSaver) {
-    saver.write("report.css",w=>{w.append(IOUtil.loadFileAsString(new File(IOUtil.baseDir,"report.css")))})
+    saver.write("report.css",w=>{w.append(new String(reportCSS))})
   }
 
   class DetailedReportHelper(data:ElectionData,report:ElectionResultReport,val useStartCounts:Boolean,val useDistributed:Boolean,val useTransferred:Boolean,val useSetAside:Boolean,val usePapers:Boolean,val usesNames:Boolean,val usesCount:Boolean) {
     val candidates = data.candidates
     // val usePapers = 
     
-    def heading =  
+    def heading: Elem =
       <tr class="Head">{if (usesNames) <td>Group</td><td>Candidate</td>}{if (usesCount) <td>Count</td>}{if (useStartCounts) <td>Start Votes</td>} {if (useStartCounts&&usePapers) <td>Start Papers</td>}{if (useDistributed) <td>Distributed</td>}{if (useTransferred) <td>Transferred</td>} {if (useTransferred&&usePapers) <td>Transferred Papers</td>}{if (useSetAside) <td>Set Aside</td>}{if (usePapers) <td>Papers</td>}<td>Progressive Total</td></tr>
 
     var lastgroup = "***"
@@ -139,9 +140,46 @@ object ElectionReport {
       </body>
     </html>
   }
-  
 
-  
+  def generateMarginReport(metadata: ElectionMetadata,recorder:BestMarginsRecorder) : Elem = {
+    def section(canModify1Prefs:Boolean) : List[Elem] = {
+      val best: Map[(ElectionChanged, MarginProperties), Margin] = recorder.best.filter(_._1._2.hasFirstPrefChanges==canModify1Prefs)
+      def table(delta:ElectionChanged): Elem = {
+        <div>
+          <h3>Effect</h3>
+          {
+          for (effect<-delta.descListWithGroups(metadata)) yield <p>{effect}</p>
+          }
+          <table class="Display">
+            <tr class="Head"><td>Properties</td><td>Margin votes</td><td>Margin papers</td><td>Counting Step</td><td>Vote Recipients</td></tr>
+            {
+            for (((delta1, properties), margin) <- best if delta == delta1) yield <tr class="Striped"><td>{for (x<-properties.propertyList) yield <p>{x}</p>}</td><td>{margin.votes}</td><td>{margin.papers}</td><td>{margin.step}</td>
+              <td>{for (l<-margin.howLines(metadata.candidates)) yield <p>{l}</p>}</td></tr>
+            }
+          </table>
+        </div>
+      }
+      if (best.isEmpty) List(<p>None</p>)
+      else for (delta<-best.keys.map{_._1}.toList.distinct) yield table(delta)
+    }
+    <html>
+      <head>
+        <meta charset="UTF-8"/>
+        <title>Margins</title>
+        <link href="report.css" type="text/css" rel="stylesheet"></link>
+      </head>
+      <body>
+        <p>Margins - a method of transferring votes from some candidates to others to change the result of the election. General approach is to try to exclude candidates. Candidates elected before any exclusions not included. Of course there may be more complex ways to achieve the same result with fewer changes by altering the order of eliminations.</p>
+        <p>Papers is number of ballots that are changed; votes is after taking transfer values into account, and may be approximate due to rounding. In particular sometimes taking papers from one person to another will be a different number of votes for the donor and recipient. The count number is where the change is likely to first have a big effect.</p>
+        <h2>Not allowing first preference changes</h2>
+        {section(false)}
+        <h2>Allowing first preference changes</h2>
+        {section(true)}
+      </body>
+    </html>
+  }
+
+/*
   def generateMarginReport(data:ElectionData,report:ElectionResultReport,marginType:MarginTypes.MarginType) = {
     val candidates = data.candidates
     val marginResults = report.marginsResult(marginType.n)
@@ -187,7 +225,7 @@ object ElectionReport {
       </body>
     </html>
   }
-
+*/
   def generateOverallReport(result:ElectionResultReport,candidates:Array[Candidate],data:ElectionData): Elem = {
     <html>
       <head>
@@ -229,7 +267,7 @@ object ElectionReport {
             </tr>
           }
         </table>
-        {for (marginType<-MarginTypes.allTypes) yield if (result.hasMarginInfo(marginType)) <p>Margins <a href={marginType.filename}>{marginType.name}</a></p>}
+        { if (result.marginsRecorder.best.nonEmpty) <p><a href="Margins.html">Margins</a></p> else <p></p> }
       </body>
     </html>
   }
@@ -286,12 +324,8 @@ object ElectionReport {
       val xml = generateReportForASingleIndividual(candidateID,data,result)
       saver.save("candidate "+data.candidates(candidateID).name+".html",xml)
     }
-    for (marginType<-MarginTypes.allTypes) {
-      //val file = new File(dir,marginType.filename)
-      if (result.hasMarginInfo(marginType)) saver.save(marginType.filename,generateMarginReport(data,result,marginType))
-
-      // scala.xml.XML.save(file.toString, generateMarginReport(data,result,marginType),"UTF-8")
-      // else file.delete()
+    if (result.marginsRecorder.best.nonEmpty) {
+      saver.save("Margins.html",generateMarginReport(data.meta,result.marginsRecorder))
     }
   }
 
@@ -538,9 +572,7 @@ class ElectionResultReport(val candidates:Array[Candidate],val ineligibleCandida
    val history = new ArrayBuffer[ElectionCountReport]
    def currentCount = history.last
    val electedCandidates = new ArrayBuffer[Int]
-   val margins : Array[Array[Option[Margin]]] = Array.fill(MarginTypes.numTypes,candidates.length)(None)
-//   val marginsTamperable : Array[Option[Margin]] = Array.fill(candidates.length)(None) //margins where you can't change first pref votes below or above line
-   val marginsResult : Array[Array[Option[ElectionChanged]]] = Array.fill(MarginTypes.numTypes,candidates.length)(None)
+   val marginsRecorder = new BestMarginsRecorder
    var excludedCandidates :Set[Int] = Set.empty
    var electedCandidatesSet :Set[Int] = Set.empty
    var progressiveTotalOfExhaustedVotes=0.0
@@ -581,14 +613,6 @@ class ElectionResultReport(val candidates:Array[Candidate],val ineligibleCandida
    }
    def possiblyStochasticHistory:Array[ElectionCountReport] = if (historyStochastic.isEmpty) history.toArray else historyStochastic.toArray
 
-   def addMarginInfo(candidate:Int,margin:Margin,marginType:MarginTypes.MarginType) {
-     if (margin.papers<=0) throw new IllegalArgumentException
-     val shouldOverwrite = margins(marginType.n)(candidate).map{_.papers>margin.papers}.getOrElse(true)
-     if (shouldOverwrite) margins(marginType.n)(candidate)=Some(margin)
-   }
-   def hasMarginInfo(marginType:MarginTypes.MarginType) :Boolean = margins(marginType.n).exists { _.isDefined }    
-   def addMarginTamperableEffectInfo(candidate:Int,delta:ElectionChanged,marginType:MarginTypes.MarginType) { marginsResult(marginType.n)(candidate)=Some(delta) }
-   
   def note(s:String)  { 
     // println(s)
   }
@@ -695,6 +719,7 @@ class ElectionResultReport(val candidates:Array[Candidate],val ineligibleCandida
     case elim:CountReportTypeElimination => elim.margin
     case _ => Double.NaN
   }
+
 }
 
 

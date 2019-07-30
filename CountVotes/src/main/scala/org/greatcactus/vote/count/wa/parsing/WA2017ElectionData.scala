@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2018 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -15,29 +15,17 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
  */
-package org.greatcactus.vote.count.wa
+package org.greatcactus.vote.count.wa.parsing
 
 import java.io.File
 
-import scala.io.Source
-import java.util.zip.ZipInputStream
-import java.io.FileInputStream
-import java.util.zip.ZipEntry
-import java.util.zip.ZipFile
-
-import scala.util.Random
-import java.io.InputStreamReader
-import java.io.InputStream
-import java.io.BufferedReader
-
 import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
+import org.greatcactus.vote.count._
+import org.greatcactus.vote.count.ballots._
+import org.greatcactus.vote.count.ballots.parsing.{CSVHelper, VoteInterpreter}
 
 import scala.collection.mutable.ArrayBuffer
 import scala.xml.XML
-import org.greatcactus.vote.count._
-import org.greatcactus.vote.count.federal.CSVHelper
-
-import scala.collection.immutable
 
 object WA2017ElectionData {
 
@@ -150,10 +138,10 @@ object WA2017ElectionData {
     def addTicket(groupId:String,ticket:Array[Int]) {
       val groupInd = groupLookup(groupId)
       val oldg = groups(groupInd)
-      groups(groupInd) = new GroupInformation(oldg.groupId,oldg.groupName,oldg.shortName,oldg.tickets:+(ticket.toArray))
+      groups(groupInd) = new GroupInformation(oldg.groupId,oldg.groupName,oldg.shortName,oldg.tickets:+ticket)
       // println(groups(groupInd).line)
     }
-    def toRegion = new WARegion(helper.getData(candidates, name,"2017"),vacancies,enrolment)
+    def toRegion = new WARegion(helper.getData(candidates, new ElectionName("2017","WAEC","WA",name),Array()),vacancies,enrolment)
     val btlsToCategory = new collection.mutable.HashMap[List[Int],FoundCategory]
 
   }
@@ -169,7 +157,7 @@ object WA2017OfficialResults {
 
   def toStringBlankIs0(s:String) : Int  = if (s.isEmpty) 0 else s.replace(",","").toInt
   def load(region:WARegion): WA2013WholeCount = {
-    val helper = CSVHelper(new File(WA2017ElectionData.sourceDir,region.data.name+"_LCDetailedResults2017.csv"),13)
+    val helper = CSVHelper(new File(WA2017ElectionData.sourceDir,region.data.meta.electionName.electorate+"_LCDetailedResults2017.csv"),13)
     val quotaMatchingString = """Quota = (\d+)/\((\d+)\+1\)\+1 = (\d+)""".r
     val quotaMatchingString(numFormalVotes,numPositions,quota) = helper.splitHeading(11).head.replace(",","")
     val numCandidates = region.data.numCandidates
@@ -211,7 +199,7 @@ object WA2017OfficialResults {
       }
       val electedS = l(2+startCandidatesColumn+numCandidates)
       if (!electedS.isEmpty) electedCandidates+=region.data.candidateIndexFromName(electedS.dropWhile(_ !=' ').trim)
-      lastlineHadNoWhoAndNoElected=(l(0).isEmpty && electedS.isEmpty)
+      lastlineHadNoWhoAndNoElected= l(0).isEmpty && electedS.isEmpty
     }
     saveCount()
     new WA2013WholeCount(region.data.candidates,numFormalVotes.toInt,numPositions.toInt,quota.toInt,countList.toArray)

@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -25,8 +25,9 @@ import java.io.InputStream
 
 object IOUtil {
 
-  var baseDir = new File(".")
+  val devBaseDir = new java.io.File("../CountPreferentialVotes") // hack for my setup. Sorry.
 
+  var baseDir = if (devBaseDir.isDirectory) devBaseDir else new File(".")
 
    def saveFile(file:File,contents:Array[Byte]) {
         file.getParentFile.mkdirs()
@@ -53,7 +54,19 @@ object IOUtil {
   def loadFileAsString(file:File) : String = new String(loadFile(file))
   
   def loadStream(s:InputStream) : Array[Byte] = {
-    sun.misc.IOUtils.readFully(s, -1, true)
+    // sun.misc.IOUtils.readFully(s, -1, true)
+    // s.readAllBytes() // Java9 standard version.
+    val out = new java.io.ByteArrayOutputStream
+    var nRead = 0
+    val buffer = new Array[Byte](16384)
+    while ({nRead = s.read(buffer, 0, buffer.length); nRead != -1}) out.write(buffer, 0, nRead)
+    return out.toByteArray
   }
-  
+
+  def loadResource(name:String) : Array[Byte] = {
+    val stream: InputStream = getClass.getResourceAsStream("/"+name)
+    try {
+      loadStream(stream)
+    } finally { stream.close() }
+  }
 }

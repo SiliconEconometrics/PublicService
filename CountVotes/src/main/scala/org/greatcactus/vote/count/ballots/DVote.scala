@@ -16,12 +16,11 @@
 
  */
 
-package org.greatcactus.vote.count
+package org.greatcactus.vote.count.ballots
 
-import java.io.PrintWriter
-import java.io.FileWriter
+import java.io.{PrintWriter, Writer}
 
-/** 
+/**
  * A partially distributed vote. Ignore votes before upto. Really the most important data structure in the program.
  * prefs[i] is the candidate given the i-th preference (starting counting from zero).
  * numVoters is the number who cast this vote (identical votes are conflated).
@@ -37,15 +36,23 @@ class DVote(val upto:Int,val numVoters:Double,val prefs:Array[Int],val src:VoteS
     else next.skipNotContinuingCandidates(continuingCandidates)
   }
   def applyTransferValue(transferValue:Double) : DVote = new DVote(upto,numVoters*transferValue,prefs,src)
-  override def toString = numVoters.toString+"* "+prefs.drop(upto).mkString(",")
-  def toMichelleFormat = "("+prefs.mkString(",")+"):"+numVoters.toInt
+  override def toString: String = numVoters.toString+"* "+prefs.drop(upto).mkString(",")
+
+  def isStillOnFirstPreference(owningCandidatePositionInParty:Int) : Boolean = (upto==0) || (src.isATL && upto == owningCandidatePositionInParty)
 }
 
-object DVote {
-  def saveMichelleFormat(file:java.io.File,votes:Seq[DVote]) {
-    file.getParentFile().mkdirs()
-    val pw = new PrintWriter(new FileWriter(file))
-    for (v<-votes) pw.println(v.toMichelleFormat)
+object MichelleFormat {
+  def saveMichelleFormat(writer:Writer,votes:Seq[Vote],data:ElectionData) {
+    val pw = new PrintWriter(writer)
+    for (i<-data.candidates.indices) {
+      val c = data.candidates(i)
+      pw.println(i.toString+"\t"+c.group+"\t"+data.groupNameFromID(c.group)+"\t"+c.name)
+    }
+    for (v<-votes) {
+      val source = if (v.src.isATL) "ATL" else "BTL"
+      val normal = "("+v.preferences.mkString(",")+"):"+v.numVoters.toInt
+      pw.println(source+" "+normal)
+    }
     pw.close()
   }
 }

@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -26,18 +26,19 @@ import java.io.PrintWriter
 import java.io.FileWriter
 
 import org.greatcactus.vote.count._
+import org.greatcactus.vote.count.ballots.{DVote, ElectionData}
 
 object RunElection extends App {
 
   val useIvote = true
   val useNormal = false
   
-  val rawstats = NSWStateElectionData.load(useIvote,useNormal)
+  val rawstats = NSWStateElectionData2019.load(useIvote,useNormal)
   rawstats.printStatus()
   val random = new Random
   val worker = new NSWElectionHelper(rawstats,21,random,NSWLegislativeCouncilRules,Set.empty)
   worker.run()
-  ElectionReport.saveReports(new java.io.File(NSWStateElectionData.reportDir,"Single Run"+(if (useIvote) " iVote" else "")+(if (useNormal) " Normal" else "")),worker.report,rawstats)
+  ElectionReport.saveReports(new java.io.File(NSWStateElectionData2019.reportDir,"Single Run"+(if (useIvote) " iVote" else "")+(if (useNormal) " Normal" else "")),worker.report,rawstats)
   //println("\n\nIVOTE\n")
   //val ivote = LoadFromFile.load(true)
   //ivote.printStatus()

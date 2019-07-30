@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -16,15 +16,15 @@
 
  */
 package org.greatcactus.vote.count.nsw
-import org.greatcactus.vote.count._
 
 import java.io.File
+
 import scala.io.Source
-import java.util.zip.ZipInputStream
-import java.io.FileInputStream
-import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
-import scala.util.Random
+
+import org.greatcactus.vote.count.ballots.parsing.VoteInterpreter
+import org.greatcactus.vote.count.ballots.{Candidate, ElectionData, ElectionName, GroupInformation}
+
 import org.jsoup.nodes.Document
 
 object NSWLocal2012IO {
@@ -62,11 +62,11 @@ object NSWLocal2012IO {
         val ballotID = ll(1).toInt
         val preferenceNumber = ll(3).toInt
         val candidateid = ll(4)
-        val votetype = ll(5)
-        helper.addBTL(ballotID, candidates.get(candidateid).get, preferenceNumber)
+        //val votetype = ll(5)
+        helper.addBTL(ballotID, candidates(candidateid), preferenceNumber)
       }
       if (name.endsWith("_")) name=name.substring(0,name.length-1)
-      helper.getData(orderedCandidates.toArray,name,"2012")
+      helper.getData(orderedCandidates.toArray,new ElectionName("2012","NSWEC","NSW LGE",name),Array())
   }
   
 }
@@ -126,7 +126,7 @@ object NSWLocal2016IO {
           }
         }
       }
-      helper.getData(orderedCandidates,name,"2016")
+      helper.getData(orderedCandidates,new ElectionName("2016","NSWEC","NSW LGE",name),Array())
   }
 
 }

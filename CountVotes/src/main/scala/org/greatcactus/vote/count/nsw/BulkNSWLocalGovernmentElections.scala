@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,22 +17,25 @@
  */
 
 package org.greatcactus.vote.count.nsw
-import org.greatcactus.vote.count._
 
+import org.greatcactus.vote.count._
 import java.io.File
+
 import scala.io.Source
 import java.net.URL
 import java.io.FileOutputStream
-import java.net.HttpURLConnection
+
 import scala.collection.mutable.ListBuffer
 import java.awt.Desktop
 import java.net.URI
 import java.util.zip.ZipFile
+
 import scala.io.Codec
 import java.io.PrintWriter
-import java.io.FileWriter
 import java.io.OutputStreamWriter
+
 import com.google.gson.Gson
+import org.greatcactus.vote.count.ballots.ElectionData
 import org.jsoup.nodes.Document
 import org.jsoup.Jsoup
 
@@ -54,7 +57,7 @@ object AllNSWLocalGovernmentElections2012 extends App {
  * Only works 2012 LGE
  */
 object SearchDownloadsDir2012 {
-  val downloads = new File("""/home/arc/Downloads""")
+  val downloads : File = new File("""/home/arc/Downloads""")
   def findPreferenceZipFiles : Map[String,File] = {
     var map : Map[String,File] = Map.empty
     for (f<-downloads.listFiles()) {
@@ -64,7 +67,7 @@ object SearchDownloadsDir2012 {
         import collection.JavaConverters._
         for (longname<-zipFile.entries().asScala.map{_.getName}.find { _.contains("CANDIDATES")})  {
             val name = longname.substring(0,longname.length-"CANDIDATES.txt".length).replace("_"," ").replace("-"," ").trim().toLowerCase()
-            println("Found "+name);
+            println("Found "+name)
             map+=name->f
         }
         zipFile.close()
@@ -74,11 +77,14 @@ object SearchDownloadsDir2012 {
   }
 }
 
-
 /** Directory to cache stuff in. If a URL has no extension, cache in directory/index.htm to prevent collisions between file names and directory names */
 class CacheDir(val dirname:String) {
   val dir = new java.io.File(dirname)
-  def where(path:String) : java.io.File = {
+  def where(path:String,whereFileGetsRedirectedTo:Option[String]=None) : java.io.File = {
+    for (alternate<-whereFileGetsRedirectedTo) {
+      val ff = new java.io.File(dir,alternate)
+      if (ff.exists()) return ff
+    }
     val f = new java.io.File(dir,path)
     if (path.contains(".")) f else new java.io.File(f,"index.html")
   }
@@ -91,47 +97,23 @@ object ParseNSW2017 extends ParseNSW2016format(2017)
 class ParseNSW2016format(year:Int) extends NSWLocalData(year) {
   import DownloadURL._
   
-  def getAndRun[R](path:String,work: java.io.File=>R) : Option[R] = {
-    val f = cacheFile(urlBase+path,cacheDir)
-    if (f.exists()) {
-      Some(work(f))
-    } else None
-  }
-  
-  def getAndRunJSon[R,T](path:String,clazz:Class[T],work:T=>R) : Option[R] = {
-    getAndRun(path,jf =>{
-       val parsedJson : T = gson.fromJson(IOUtil.loadFileAsString(jf), clazz)
-       work(parsedJson)
-    }) 
-  }
-  
-  def getAndRunJsoup[R](path:String,work:Document=>R) : Option[R] = {
-    getAndRun(path,jf =>{
-      val doc : Document = Jsoup.parse(jf,"UTF-8")
-      try {
-        work(doc)
-      } catch { case e:Exception => println("Error with "+path); throw e;}
-    }) 
-  }
-  
 
-  val hour = 1000L*60*60
-  val redownloadTryInterval = hour*4 // 4 hours
-  
+  val hour : Long = 1000L*60*60
+  val redownloadTryInterval : Long = hour*4 // 4 hours
+
   /* Say that the cached file at url contains data that is not final, and it should be redownloaded. To prevent too much work, don't redownload if last done recently */
   def markToBeUpdated(url:String) {
-    val f = cacheFile(urlBase+url,cacheDir)
+    val f = cacheFile(urlBase+url,cacheDownloadsDir)
     if (f.exists()) {
       val age = System.currentTimeMillis()-f.lastModified()
       if (age>redownloadTryInterval) {
         println("Deleting cache file for "+url+" as "+(age/hour)+" hours old and not final.")
         f.delete()
-        cacheFile(urlBase+url,cacheDir)
+        cacheFile(urlBase+url,cacheDownloadsDir)
       } else println("Not updating cache file for "+url+" as only "+(age/hour)+" hours old.")
     }
-    
   }
-  
+
   def parseAll() { // should work for 2016 and 2017.
     val runs = new RunLotsOfContests(year)
     getAndRunJSon("/councils.json",classOf[Array[NSW2016Council]],{areas : Array[NSW2016Council] => {
@@ -173,15 +155,15 @@ class ParseNSW2016format(year:Int) extends NSWLocalData(year) {
                       if (dops.forall { _.isDefined }) Some(new NSWWholeCountSummary(dops.map{_.get}.toArray)) else None
                     // download lots?
                     } else { markToBeUpdated(wardUrlBase+"dop_index.html"); None }
-                    
-                    val ziplist = cacheDownloadFile(urlBase+wardUrlBase+"finalpreferencedatafile.zip",cacheDir,"finalpreferencedatafile",".zip")
+
+                    val ziplist = cacheDownloadFile(urlBase+wardUrlBase+"finalpreferencedatafile.zip",cacheDownloadsDir,"finalpreferencedatafile",".zip")
                     val prettyName = area.areaAuthorityName+(if (isWard) " "+ward.name else "")
                     val data = NSWLocal2016IO.loadRaw(ziplist,candidates,groups,prettyName)
                     for (summary<-dopsum) {
                       CheckTies.check(summary,candidateNames)
                       CheckRounding.check(summary,candidateNames)
                     }
-                    runs.runElection(data, winners.get.toList, false, mayor,dopsum,year) 
+                    runs.runElection(data, winners.get.toList, false, mayor,dopsum,year)
                   } else markToBeUpdated(wardUrlBase+"dop_cnt_001.html")
                 } else { markToBeUpdated(wardUrlBase+"result_councillor.html"); markToBeUpdated(wardUrlBase+"candidates_in_sequence.html") }
               }
@@ -191,7 +173,7 @@ class ParseNSW2016format(year:Int) extends NSWLocalData(year) {
               /* need to run mayor first */
           for (ward<-lga.contests) if (ward.isMayoral) processWard(ward,false)
           for (ward<-lga.contests) if (!ward.isMayoral) processWard(ward,false)
-          for (ward<-lga.wards) processWard(ward,true) 
+          for (ward<-lga.wards) processWard(ward,true)
         }})
       } else runs.addAreaStatus(area.status)
     }})
@@ -204,32 +186,32 @@ class ParseNSW2016format(year:Int) extends NSWLocalData(year) {
 class NSW2016Council(val areaId:String,val areaAuthorityName:String,val status:String,val wardCount:String)
 class NSW2016LGA(val id:String,val name:String,val wards:Array[NSW2016LGAWard],val contests:Array[NSW2016LGAWard])
 class NSW2016LGAWard(val id:String,val realid:String,val name:String,val status:String,val isRecount:Boolean,val isFinal:Boolean,val isDeferred:Boolean) {
-  def isDataAvailable = isFinal && (status=="Publish_Results" || status=="Declared_Election")
-  def isMayoral = id=="mayoral"
-  def isReferendum = id=="referendum"
-  def isPoll = id=="poll"
-  def isUncontested = status=="Uncontested_Declared_Election"
+  def isDataAvailable : Boolean = isFinal && (status=="Publish_Results" || status=="Declared_Election")
+  def isMayoral : Boolean = id=="mayoral"
+  def isReferendum : Boolean = id=="referendum"
+  def isPoll : Boolean = id=="poll"
+  def isUncontested : Boolean = status=="Uncontested_Declared_Election"
 }
 
-			
+
 object RunLotsOfContests {
   val giveDetailedReportOnOneRun = true
   val numToRun = 1000000
   val numThreads = 4
-  
+
   val generateStochasticReports = false
   val useNWSECredistributableRules = false // the incorrect rules used accidentally by the NSWEC in the 2012 LGE.
   val useStochastic = true
   val electionRules = new ElectionRules(true,useNWSECredistributableRules,useStochastic)
-  
+
 }
 class RunLotsOfContests(val year:Int) {
     val contestResults = new ContestResults
     var numUncontested = 0
     var areaStatuses : Map[String,Int] = Map.empty
-    
+
     def addAreaStatus(status:String) { areaStatuses+= status->(1+(areaStatuses.getOrElse(status,0))) }
-    
+
     def saveOverallReports() {
       def of(what:String) =  "LocalGovernmentNSW"+year+"_"+what+".html"
       contestResults.print(of("All"),"all",_ => true)
@@ -239,9 +221,9 @@ class RunLotsOfContests(val year:Int) {
       println("Uncontested contests "+numUncontested)
       for ((status,n)<-areaStatuses) println("Area status "+status+" : "+n)
     }
-    
+
     def runElection(data:ElectionData,electedCandidates:List[String],isMayoral:Boolean,mayor:Option[String],officialDOP : Option[NSWWholeCountSummary],year:Int) {
-                       val prettyName = data.name
+                       val prettyName = data.meta.electionName.electorate
                        val ineligibleCandidates :Set[Int] = if (isMayoral) Set.empty else { mayor.map{data.candidateIndex(_)}.toSet- (-1) }
                        if (RunLotsOfContests.giveDetailedReportOnOneRun) {
                           val worker = new NSWElectionHelper(data,electedCandidates.length,new scala.util.Random,RunLotsOfContests.electionRules,ineligibleCandidates)
@@ -259,19 +241,19 @@ class RunLotsOfContests(val year:Int) {
                        }
                        val report = if (RunLotsOfContests.generateStochasticReports) Some(new StochasticReportOptions(new File("LGE"+year+"reports/"+prettyName+"/Stochastic"),false)) else None
                        ProbabilisticWork.runProbabilisticly(RunLotsOfContests.numToRun, RunLotsOfContests.numThreads, data,true,electedCandidates.length,RunLotsOfContests.electionRules,Some(output),ineligibleCandidates,report,officialDOP)
-      
+
     }
 }
 
-class NSWLocalData(val year:Int) {
-  def isCurrent = year==2017
-  val cacheDir = new CacheDir("Elections/NSW/LGE"+year+"/cache")
-  cacheDir.dir.mkdirs()
+class NSWLocalData(val year:Int,val electionType:String="LGE") {
+  def isCurrent: Boolean = year==2019
+  val cacheDownloadsDir = new CacheDir("Elections/NSW/"+electionType+year+"/cache")
+  cacheDownloadsDir.dir.mkdirs()
   val urlBase = if (isCurrent) "http://vtr.elections.nsw.gov.au" else "http://www.pastvtr.elections.nsw.gov.au"
 
   import DownloadURL._
-  def getSource(url:String) : Source = Source.fromFile(cacheFile(url,cacheDir),"utf-8")
-  
+  def getSource(url:String) : Source = Source.fromFile(cacheFile(url,cacheDownloadsDir),"utf-8")
+
   val restrictCalculatedTo : Option[Set[String]] = None // Some(Set("Northern Beaches","Cumberland","Ku-rin-gai","North Sydney","City of Paramatta","City of Ryde")) // None // Some(Set("Hawkesbury City Council")) // Some(Set("Griffith"))
   val restrictWardTo : Option[Set[String]] = None // Some(Set("curl-curl-ward","greystanes-ward"))
   val gson = new Gson
@@ -287,43 +269,67 @@ class NSWLocalData(val year:Int) {
                      (lastnames++firstnames).mkString(" ")// lessaffinity.drop(1).mkString(" ")+" "+lessaffinity(0)
   }
 
+  def getAndRun[R](path:String,work: java.io.File=>R,/*If going to the URL actually loads the file from somewhere else. */ whereFileGetsRedirectedTo:Option[String]=None) : Option[R] = {
+    val f = cacheFile(urlBase+path,cacheDownloadsDir,None,whereFileGetsRedirectedTo)
+    if (f.exists()) {
+      Some(work(f))
+    } else None
+  }
+
+  def getAndRunJSon[R,T](path:String,clazz:Class[T],work:T=>R,/*If going to the URL actually loads the file from somewhere else. */ whereFileGetsRedirectedTo:Option[String]=None) : Option[R] = {
+    getAndRun(path,jf =>{
+      val parsedJson : T = gson.fromJson(IOUtil.loadFileAsString(jf), clazz)
+      work(parsedJson)
+    },whereFileGetsRedirectedTo)
+  }
+
+  def getAndRunJsoup[R](path:String,work:Document=>R,/*If going to the URL actually loads the file from somewhere else. */ whereFileGetsRedirectedTo:Option[String]=None) : Option[R] = {
+    getAndRun(path,jf =>{
+      val doc : Document = Jsoup.parse(jf,"UTF-8")
+      try {
+        work(doc)
+      } catch { case e:Exception => println("Error with "+path); throw e;}
+    },whereFileGetsRedirectedTo)
+  }
+
+
 }
 
-object ParseNSW2012 extends NSWLocalData(2012) {  
-  val listOfTownsURL = if (isCurrent) "http://vtr.elections.nsw.gov.au/lge-index.htm" else "http://www.pastvtr.elections.nsw.gov.au/LGE2012/lge-index.htm"
-  val listOfTownsPatternMatcher = """<p><a (?:class="disabled" )?title="([^"]*)" href="([^"]*)">([^<]*)</a></p>""".r
-  val listOfContestsPatternMatcher = if (year==2012) """<a title="Go to [^"]*" class="([^ ]*) urlfixed" href="([^"]*)">[^<]*""".r
+object ParseNSW2012 extends NSWLocalData(2012) {
+  private val listOfTownsURL = if (isCurrent) "http://vtr.elections.nsw.gov.au/lge-index.htm" else "http://www.pastvtr.elections.nsw.gov.au/LGE2012/lge-index.htm"
+  private val listOfTownsPatternMatcher = """<p><a (?:class="disabled" )?title="([^"]*)" href="([^"]*)">([^<]*)</a></p>""".r
+  private val listOfContestsPatternMatcher = if (year==2012) """<a title="Go to [^"]*" class="([^ ]*) urlfixed" href="([^"]*)">[^<]*""".r
                                      else """.*<a title="Go to [^"]*" class="([^"]*)" href="([^"]*)">""".r
-  val zipFilePatternMatcher = """.*title="Details Preference for Count ZIP" href="(/LGE201./Results/LGE201./PRCC/([^/]*)/11 - Details Preference for Count.zip)".*""".r
-  val detailsPreferenceFilePatternMatcher = """<li><strong><a class="FinalResultsFile" target="FinalResult" title="Details Preference for Count ZIP" href="([^"]*)">.*""".r
-  val electedCandidatePatternMatcher = """<span class="candidate_name">([^<]*)</span>""".r
-    
+  private val zipFilePatternMatcher = """.*title="Details Preference for Count ZIP" href="(/LGE201./Results/LGE201./PRCC/([^/]*)/11 - Details Preference for Count.zip)".*""".r
+  private val detailsPreferenceFilePatternMatcher = """<li><strong><a class="FinalResultsFile" target="FinalResult" title="Details Preference for Count ZIP" href="([^"]*)">.*""".r
+  private val electedCandidatePatternMatcher = """<span class="candidate_name">([^<]*)</span>""".r
+
   def processAll2012() {
     val runs = new RunLotsOfContests(2012)
     val zipmap = SearchDownloadsDir2012.findPreferenceZipFiles
-    val listOfTowns = getSource(listOfTownsURL) 
+    val listOfTowns = getSource(listOfTownsURL)
     for (line<-listOfTowns.getLines()) {
       // println(line)
       line.trim match {
-        case listOfTownsPatternMatcher(title,relurl,human) => 
+        case listOfTownsPatternMatcher(title,relurl,human) =>
            println(title+"\t"+relurl+"\t"+human)
-           val index = DownloadURL.cacheFile(urlBase+relurl,cacheDir)
+           val index = DownloadURL.cacheFile(urlBase+relurl,cacheDownloadsDir)
            class ContestType(val contesttype:String,val contestrelurl:String,val electedCandidates:List[String]) {
              def isMayoral = electedCandidates.length==1
            }
            val contests = new ListBuffer[ContestType]
-           val realindex = if (year==2012) index else cacheDir.where("/data"+relurl+"/summary.html")
+           val realindex = if (year==2012) index else cacheDownloadsDir.where("/data"+relurl+"/summary.html")
            println(realindex.exists())
            if (realindex.exists()) for (line<-Source.fromFile(realindex).getLines()) line.trim() match {
              case listOfContestsPatternMatcher(contesttype,contestrelurl) => // <a title="Go to Councillor" class="contest urlfixed" href="/LGE2012/tumbarumba-shire-council/councillor/summary/index.htm">
                println(s" Contest $contestrelurl type $contesttype")
-               val index2 = DownloadURL.cacheFile(urlBase+contestrelurl,cacheDir)
+               val index2 = DownloadURL.cacheFile(urlBase+contestrelurl,cacheDownloadsDir)
                var haveFinalResults = false
                val electedCandidates = new collection.mutable.ListBuffer[String]
                if (index2.exists()) {
                  for (l<-Source.fromFile(index2).getLines()) l.trim match {
                    case """<li><a id="final" href="../final-results/index.htm" title="Final Results">Final Results</a></li>""" => haveFinalResults = true
-                   case electedCandidatePatternMatcher(candidatename) => 
+                   case electedCandidatePatternMatcher(candidatename) =>
                      electedCandidates+=reverseName(candidatename)
                    case _ =>
                  }
@@ -336,7 +342,7 @@ object ParseNSW2012 extends NSWLocalData(2012) {
            // should extract mayor who is not allowed to win.
            val mayor : Option[String] = contests.find { _.isMayoral}.map{_.electedCandidates(0)}
            for (contest<-contests) {
-                 val index3 = DownloadURL.cacheFile(urlBase+contest.contestrelurl.replace("summary","final-results"),cacheDir)
+                 val index3 = DownloadURL.cacheFile(urlBase+contest.contestrelurl.replace("summary","final-results"),cacheDownloadsDir)
                  if (index3.exists) for (line<-Source.fromFile(index3)(Codec.ISO8859).getLines()) line.trim() match {
                    case zipFilePatternMatcher(ziprelurl,contestloc) => // <li><strong><a class="FinalResultsFile" target="FinalResult" title="Details Preference for Count ZIP" href="/LGE2012/Results/LGE2012/PRCC/Albury/11 - Details Preference for Count.zip">11 - Details Preference for Count.zip</a></strong> � This zip file provides preference details for all formal ballot papers used for count.</li></ul></div></div>
                      //println(s"  zip file at $ziprelurl $contestloc")
@@ -348,7 +354,7 @@ object ParseNSW2012 extends NSWLocalData(2012) {
                      val lookingForName3 = (human+extraname).toLowerCase().replace("-"," ")
                      val foundDownload = zipmap.get(lookingForName).orElse(zipmap.get(lookingForName2)).orElse(zipmap.get(lookingForName3))
                      //println(s"   looking for $lookingForName found $foundDownload")
-                     val indexzip = DownloadURL.cacheFile(urlBase+ziprelurl.replace("%20"," "),cacheDir,foundDownload)
+                     val indexzip = DownloadURL.cacheFile(urlBase+ziprelurl.replace("%20"," "),cacheDownloadsDir,foundDownload)
                      if ((restrictCalculatedTo.isEmpty||restrictCalculatedTo.get.contains(prettyName))&&indexzip.exists()) {
                        val data = NSWLocal2012IO.loadRaw(indexzip)// .reverseCandidateOrder
                        runs.runElection(data,contest.electedCandidates,contest.isMayoral,mayor,None,year)
@@ -408,9 +414,9 @@ class ContestResults {
 object DownloadURL {
   val alreadyRequested = new collection.mutable.HashSet[String]
   /** Prompt the user to download a URL and return a (local) file in cacheDir containing it. If file already exists, don't bother redownloading. */
-  def cacheFile(urlToDownload:String,cacheDir:CacheDir,existingFile:Option[File]=None) : File = {
+  def cacheFile(urlToDownload:String,cacheDir:CacheDir,existingFile:Option[File]=None,/*If going to the URL actually loads the file from somewhere else. */ whereFileGetsRedirectedTo:Option[String]=None) : File = {
     val url = new URL(urlToDownload)
-    val cached = cacheDir.where(url.getPath)
+    val cached = cacheDir.where(url.getPath,whereFileGetsRedirectedTo)
     if (!cached.exists()) existingFile match {
       case Some(fileToCopy) =>
         IOUtil.copyFile(fileToCopy,cached)

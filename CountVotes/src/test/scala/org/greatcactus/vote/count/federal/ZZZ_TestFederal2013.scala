@@ -18,11 +18,10 @@
 package org.greatcactus.vote.count.federal
 
 import org.greatcactus.vote.count._
-import org.greatcactus.vote.count.MainDataTypes._
-
+import org.greatcactus.vote.count.ballots.{DVote, Vote}
+import org.greatcactus.vote.count.federal.parsing.FederalElectionDataLoader2013
 import org.junit.Assert._
-
-import org.junit.Test;
+import org.junit.Test
 
 /**
  * Test my algorithm against official distribution of preferences
@@ -31,14 +30,14 @@ class ZZZ_TestFederal2013 {
   FindBaseDir.findBaseDir()
 
   def test(state:String,toBeElected:Int,ticketRoundingChoices:Map[String,Int],aecDeemedOrder:Seq[Int]) {
-    val data = FederalElectionData.load2013(state)
+    val data = FederalElectionDataLoader2013.load(state)
     data.printStatus()
-    val officialResults = FederalElectionData.readOfficialResults2013(data)
-    val worker = new FederalSenateCountHelper(data,toBeElected,ticketRoundingChoices,aecDeemedOrder,WhatMarginInformationToCompute.none,true,Set.empty,false,false,false)
+    val officialResults = FederalElectionDataLoader2013.readOfficialResults2013(data)
+    val worker = new FederalSenateCountHelper(data,toBeElected,ticketRoundingChoices,aecDeemedOrder,true,Set.empty,false,false,false)
     worker.run(None)
     val myreport = worker.report
 
-    for (countNo<-0 until officialResults.counts.length) {
+    for (countNo<-officialResults.counts.indices) {
       val desc = "Count "+(countNo+1)
       val official = officialResults.counts(countNo)
       if (myreport.history.length<=countNo) fail("My report is too short, only "+myreport.history.length+" expecting "+officialResults.counts.length)
@@ -75,7 +74,7 @@ class ZZZ_TestFederal2013 {
   
   
   @Test def testSAexhaustion() {
-    val data = FederalElectionData.load2013("SA")
+    val data = FederalElectionDataLoader2013.load("SA")
     val votes : Array[Vote] = data.makeVotes(DeducedAEC2013TicketSplits.sa)
     val dvotes : Array[DVote] = for (v<-votes) yield new DVote(0,v.numVoters,v.preferences,v.src)
     val continuing = Set(2,14,68)

@@ -1,5 +1,5 @@
 /*
-    Copyright 2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2017-2019 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -26,16 +26,16 @@
 package org.greatcactus.vote.count.wa
 
 import org.greatcactus.vote.count._
-
 import org.greatcactus.vote.count.weighted._
 import org.greatcactus.vote.count.MainDataTypes._
+import org.greatcactus.vote.count.ballots.ElectionData
 
 class WAElectionHelper (data:ElectionData,candidatesToBeElected:Int,ticketRoundingChoices:Map[String,Int],aecDeemedOrder:Seq[CandidateIndex],printDebugMessages:Boolean,ineligibleCandidates:Set[CandidateIndex]=Set.empty)
      extends WeightedCountHelper(data,candidatesToBeElected,ticketRoundingChoices:Map[String,Int],aecDeemedOrder,printDebugMessages,ineligibleCandidates) {
   
   override def reportsShouldUseMajorCountNumber = true
   
-  override def shouldSeparateBallotsBySourceCountNumber : Boolean = true
+  override def shouldSeparateBallotsBySourceCountNumber : HowSplitByCountNumber = FullySplitByCountNumber
   override def finishExclusionEvenIfAllWillBeElected : Boolean = false
   override def finishSuplusDistributionEvenIfEveryoneWillGetElected : Boolean = false
   /*
@@ -87,7 +87,7 @@ class WAElectionHelper (data:ElectionData,candidatesToBeElected:Int,ticketRoundi
       report.addExhaustedPapers(numExhausted)
       if (transferValue>0) { // (18)
         val numVotesTrans = roundDownRecordRoundingReverseDirection(plain.numBallots*transferValue)
-        report.declareCandidateDistributed(candidate,numVotesTrans,plain.numBallots, transferValueDescription,Nil,plain.numBallots, 0, exhaustedVotes,false)
+        report.declareCandidateDistributed(candidate,numVotesTrans,plain.numBallots, transferValueDescription,Nil,plain.numBallots, 0, exhaustedVotes,distributedMakesSense = false)
         report.fromCountReference(fromCount)
         for (nextChoice<-continuingCandidates.orderedList) { // 5c(i)
           val giveVotes : PlainVotes = distributedToCandidate(nextChoice)
@@ -102,7 +102,7 @@ class WAElectionHelper (data:ElectionData,candidatesToBeElected:Int,ticketRoundi
       }
       ballots(candidate).removeTransferValueAndCountNumber(tv,fromCount)
     }
-    if (!needToEndCount) report.declareCandidateDistributed(candidate, 0, 0, transferValueMultipleDescription,Nil,  ballots(candidate).numBallots, 0, cumExhausted,false)
+    if (!needToEndCount) report.declareCandidateDistributed(candidate, 0, 0, transferValueMultipleDescription,Nil,  ballots(candidate).numBallots, 0, cumExhausted,distributedMakesSense = false)
     ballots(candidate).clear()
     val extraLostVotes = tallys(candidate)-quota
     tallys(candidate)=quota
@@ -131,7 +131,7 @@ class WAElectionHelper (data:ElectionData,candidatesToBeElected:Int,ticketRoundi
    */
   
   def forceUselessFirstPreferenceDistributionIfNonePresent = true
-  override def sortedForExclusion(votes:WeightedVotes) = {
+  override def sortedForExclusion(votes:WeightedVotes): List[((TransferValue, CountNumber), PlainVotes)] = {
     val expected = votes.sortedByCountNumber // will do highest first; (a) is a special case of (b)
     if (forceUselessFirstPreferenceDistributionIfNonePresent && (expected.isEmpty || expected.head._1._2 != 1) )
         ((1.0,1),new PlainVotes)::expected
@@ -139,8 +139,8 @@ class WAElectionHelper (data:ElectionData,candidatesToBeElected:Int,ticketRoundi
   }
   override def finishExclusionEvenIfAllVacanciesFilled : Boolean = false // legislation seems to say this should be true, but WAEC doesn't do it, and it can never change results, so no reason to be upset.
 
- 
-  def candidatesForExclusionWithMarginComputation(afterStepCount:Boolean) : CandidateToExclude = getCandidateToExcludeWithExplicitCountbackRequiringAllDifferent
+
+  override def candidatesForExclusion : CandidateToExclude = getCandidateToExcludeWithExplicitCountbackRequiringAllDifferent
   
 
   

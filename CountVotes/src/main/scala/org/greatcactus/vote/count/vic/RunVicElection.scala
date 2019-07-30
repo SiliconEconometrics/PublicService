@@ -16,27 +16,25 @@
 
  */
 
-package org.greatcactus.vote.count.wa
+package org.greatcactus.vote.count.vic
 
 import java.io.File
 
 import org.greatcactus.vote.count.ElectionReport
-import org.greatcactus.vote.count.wa.parsing.{WA2017ElectionData, WA2017OfficialResults}
+import org.greatcactus.vote.count.vic.parsing.Vic2014Data
 
-object RunWAElection extends App {
+object RunVicElection extends App {
   val printDebugMessages:Boolean = true
-  val reportDir = new File("WA2016Reports")
+  val reportDir = new File("Vic2014Reports")
   
-  val regions = WA2017ElectionData.loadAllRaw()
-  for (region<-regions) {
-    region.data.printStatus()
-    println("Enrolment "+region.enrolment)
-    //for (g<-region.data.groupInfo) println(g.line)
+  for (region<-Vic2014Data.regions) {
+    val data = Vic2014Data.load(region)
+    data.printStatus()
     val ticketRoundingChoices:Map[String,Int] = Map.empty
-    val ecDeemedOrder:Seq[Int] = WA2017OfficialResults.usedOrders.getOrElse(region.data.meta.electionName.electorate,List.empty)
-    val worker = new WAElectionHelper (region.data,region.vacancies,ticketRoundingChoices,ecDeemedOrder,printDebugMessages,Set.empty)
+    val ecDeemedOrder:Seq[Int] = List.empty // WA2017OfficialResults.usedOrders.getOrElse(region.data.meta.electionName.electorate,List.empty)
+    val worker = new VicElectionHelper (data,5,ticketRoundingChoices,ecDeemedOrder,printDebugMessages,Set.empty)
     worker.run()
-    ElectionReport.saveReports(new File(reportDir,region.data.meta.electionName.electorate),worker.report,region.data)
+    ElectionReport.saveReports(new File(reportDir,data.meta.electionName.electorate),worker.report,data)
   }
   
 }

@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2016 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -15,11 +15,35 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
  */
- 
- Libraries needed
- ----------------
- gson (https://github.com/google/gson), and the scala xml library (in the Scala distribution)
- Also jsoup.
+
+This contains a variety of programs for counting STV elections in
+Australia; in particular for
+  Federal Senate
+  NSW local and legislative council
+  Victorian Senate (little tested)
+  WA Senate (little tested)
+
+The code is written in Scala, designed to be built using sbt. The code is
+written in Scala 2.12. Earlier versions are likely to work, 2.13 causes some problems
+with xml syntax.
+
+Each election has its own idiosyncracies; different election rules, different
+file formats, different electoral commission choices. This means there tends to be separate apps for
+different elections which is rather messy to describe.
+
+I have started to work on a general front end "MainApp" to all this mess, although it is incomplete.
+Running "sbt assembly" will produce an executable JAR file which can run federal elections, 2013 to 2019.
+Hoever you need the data in a common format for this; you can obtain this from vote.andrewconway.org
+which contains a front end to the three different formats used by the AEC for the votes from the three
+elections.
+
+There is also the ability to experiment in modifications to some of the votes. This can be used
+to verify that changes will alter the outcome of an election, which can be used to help in
+determining difficulty of electoral fraud, and thus appropriate requirements for auditing
+elections.
+
+Some (somewhat old) notes on specific elections are listed below.
+
 
 NSW
 ---
@@ -66,8 +90,11 @@ sensitivity.
 To run 2013: Put downloaded data files in Election/Federal/2013, and run FederalSenateCount2013App in FederalSenateCount.scala.
 It will produce files in Federal2013Reports. Start with About.html
 
-To run 2013: Put downloaded data files in Election/Federal/2016, and run FederalSenateCount2016App in FederalSenateCount.scala.
+To run 2016: Put downloaded data files in Election/Federal/2016, and run FederalSenateCount2016App in FederalSenateCount.scala.
 It will produce files in Federal2016Reports. Start with About.html
+
+To run 2019: Put downloaded data files in Election/Federal/2019, and run FederalSenateCount2019App in FederalSenateCount.scala.
+It will produce files in Federal2019Reports. Start with About.html
 
 This seems to produce exactly the same results as the official 2013 results, except for a difference of one paper in the last count in 2013 (which didn't change the number of votes because of rounding). I have no idea what caused this.
 It produced exactly the same results as the official 2016 results (if you disable multiple eliminations and continue counting past the point everyone is elected).
@@ -77,15 +104,6 @@ As above, there are lots of reasons not to trust it. This is provided in the hop
 A web front end is available at https://vote.andrewconway.org
 
 
-
-Compiling
----------
-It is written in Scala. It was written in version 2.12, but should work with
-2.10 & 2.11 and probably future versions. It needs the standard scala libraries, plus
-the xml library that comes with the scala distribution but is not generally
-added by default to the classpath.
-
-The directory structure includes files that allows it to be used as an sbt project or idea project.
 
 
 Running NSW State Election 2015
@@ -135,10 +153,6 @@ General comments on code
 
 The code was written quickly and with an eye on performance. Don't expect a shining example
 of software engineering.
-
-DataStructures.scala reads the input formats and merges adjacent tallys.
-ElectionReport.scala contains the result of the election and code to print out pretty reports
-RunElection.scala contains the actual meat of the election.
 
 For performance reasons, identical votes are gathered together and processed as a group.
 This makes the random subset generation slightly more complex, but reduces the number

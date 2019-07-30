@@ -1,5 +1,5 @@
 /*
-    Copyright 2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2017-2019 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -16,11 +16,13 @@
 
  */
 package org.greatcactus.vote.count.nsw
+
 import org.greatcactus.vote.count._
+import org.greatcactus.vote.count.ballots.{ElectionData, GroupInformation}
 
 object IVoteScreenStats extends App {
-    val ivote = NSWStateElectionData.load(true,false)
-    val normal = NSWStateElectionData.load(false,true)
+    val ivote = NSWStateElectionData2019.load(true,false)
+    val normal = NSWStateElectionData2019.load(false,true)
 
     println("iVote")
     analyse(ivote)
@@ -32,7 +34,7 @@ object IVoteScreenStats extends App {
       val groupCounter = new Array[Int](stats.groupInfo.length+1)
       for (v<-stats.satls) groupCounter(stats.groupIndexFromID(v.group))+=v.numVoters
       for (v<-stats.ratls) groupCounter(v.groups.map(stats.groupIndexFromID).max)+=v.numVoters
-      for (v<-stats.btls) groupCounter(groupIndexFromID(stats.candidates(v.candidates.max).group))+=1
+      for (v<-stats.btls) groupCounter(groupIndexFromID(stats.candidates(v.candidates.max).group))+=v.numVoters
       stats.printStatus()
       val total = stats.totalFormalVotes
       var cumulative = 0

@@ -17,12 +17,10 @@
  */
 package org.greatcactus.vote.count.wa
 
-import org.greatcactus.vote.count._
-import org.greatcactus.vote.count.wa._
 import org.greatcactus.vote.count.MainDataTypes._
-
+import org.greatcactus.vote.count._
+import org.greatcactus.vote.count.wa.parsing.WA2013ElectionData
 import org.junit.Assert._
-
 import org.junit.Test;
 
 /**

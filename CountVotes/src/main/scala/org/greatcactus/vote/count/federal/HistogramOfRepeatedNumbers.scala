@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2018 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -18,10 +18,10 @@
 
 package org.greatcactus.vote.count.federal
 
-import org.greatcactus.vote.count._
-import org.greatcactus.vote.count.MainDataTypes._
-
 import java.io.File
+
+import org.greatcactus.vote.count.ballots.parsing.{CSVHelper, Splitter}
+import org.greatcactus.vote.count.federal.parsing.{AECCandidateInformation, AECCandidateInformationSource2016FirstPrefsByStateByVoteType}
 
 /** Compute a histogram of all the repeated numbers in a given person's vote (errors) */
 object HistogramOfRepeatedNumbers extends App {
@@ -58,11 +58,11 @@ object HistogramOfRepeatedNumbers extends App {
     println("Duplicates")
     repeated.print()
   }
-  analyse("VIC")
+  analyse("TAS")
 }
 
 class Histogram(len:Int) {
-  private val a = new Array[Int](len)
+  val a : Array[Int] = new Array[Int](len)
   private var largest = 0
   def add(n:Int) {
     if (largest<n) largest=n

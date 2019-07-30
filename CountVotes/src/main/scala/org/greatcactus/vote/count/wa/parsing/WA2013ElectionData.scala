@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2018 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -15,29 +15,29 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
  */
-package org.greatcactus.vote.count.wa
+package org.greatcactus.vote.count.wa.parsing
 
 import java.io.File
 
 import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
+import org.greatcactus.vote.count.ballots._
+import org.greatcactus.vote.count.ballots.parsing.{BelowTheLineBuilderByCandidateID, CSVHelper, VoteInterpreter}
 
 import scala.collection.mutable.ArrayBuffer
-import org.greatcactus.vote.count._
-import org.greatcactus.vote.count.federal.CSVHelper
 
-object WA2013ElectionData {
+object WA2013ElectionData extends CachedElectionDataLoader("WA/2013") {
 
-  val sourceDir = new File(IOUtil.baseDir,"""Elections/WA/2013/""")
-  
-  
-  def loadRegionRaw(region:String) = {
+  def loadRegionRaw(region:String): (ElectionData, WA2013WholeCount) = {
     val officialResult = loadDetailedCalculationStepsRaw(region)
     val (groups,ticketIds) = loadGroups(region,officialResult.candidates.map{_.name})
     val interpreter = new VoteInterpreter(groups,officialResult.candidates.length)
     loadVotes(region,interpreter,ticketIds)
-    val data = interpreter.getData(officialResult.candidates, region,"2013")
+    val name = new ElectionName("2013","WAEC","WA",region)
+    val data = interpreter.getData(officialResult.candidates, name,Array())
     (data,officialResult)
   }
+
+  override def loadRaw(region:String) : ElectionData = loadRegionRaw(region)._1
   
   def loadGroups(region:String,candidateNames:Array[String]) : (Array[GroupInformation],Map[String,Int]) = {
     val helper = CSVHelper(new File(sourceDir,region+"_TicketsReport.csv"),11)
@@ -107,7 +107,7 @@ object WA2013ElectionData {
     val candidates : Array[Candidate] = { // not perfect, if a group name is "blank", they will be dumped in the prior group. But this doesn't really matter for other than GUI, and the 2013 data is used for testing the algorithm rather than actual use. But for niceness sake, I modified the data file with a placeholder.
       var groupId = 0
       var groupPosition = 0
-      for (i<-0 until candidateNames.length) yield {
+      for (i<-candidateNames.indices) yield {
         if (candidateGroups(i).isEmpty) groupPosition+=1 else { groupId+=1; groupPosition=0 }
         new Candidate(candidateNames(i),groupId.toString,groupPosition)
       }
@@ -161,7 +161,7 @@ object WA2013ElectionData {
                case "Progress BPs" => candidatePapers=nums
                case "Votes Rec'd" => candidateVotesTransferred=nums; lostVotes=lostFractions
                case "Progress Votes" => candidateVotes=nums; lostVotesCum=lostFractions
-               case "Lost Fractions" => for (i<-0 until nums.length) { candidateVotes(i)+=nums(i); candidateVotesTransferred(i)+=nums(i) } ; lostVotes+=lostFractions; lostVotesCum+=lostFractions
+               case "Lost Fractions" => for (i<-nums.indices) { candidateVotes(i)+=nums(i); candidateVotesTransferred(i)+=nums(i) } ; lostVotes+=lostFractions; lostVotesCum+=lostFractions
                case _ => throw new IllegalArgumentException("Unanticipated number meaning "+numMeaning)
              }
             
@@ -180,15 +180,4 @@ object WA2013ElectionData {
 class WA2013WholeCount(val candidates : Array[Candidate],val numFormalVotes:Int,val vacancies:Int,val quota:Int,val counts:Array[WA2013SingleCount])
 class WA2013SingleCount(val countName:String,val who:String,val what:String,val papersDelta:Array[Int],val papersCum:Array[Int],val votesDelta:Array[Int],val votesCum:Array[Int],val lostDelta:Int,val lostCum:Int,val electedCandidates:Array[CandidateIndex])
 
-object WA2013 extends App {
-  val reportDir = new File("WA2013Reports")
 
-  val (data,officialResult) = WA2013ElectionData.loadRegionRaw("Smet")
-  data.printStatus()
-      val ticketRoundingChoices:Map[String,Int] = Map.empty
-    val ecDeemedOrder:Seq[Int] = List()
-    val worker = new WAElectionHelper (data,officialResult.vacancies,ticketRoundingChoices,ecDeemedOrder,false,Set.empty)
-    worker.run()
-    ElectionReport.saveReports(new File(reportDir,data.name),worker.report,data)
-
-}
