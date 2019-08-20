@@ -20,6 +20,7 @@ package org.greatcactus.vote.count
 
 import java.io.File
 
+import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
 import org.greatcactus.vote.count.ballots.{ElectionData, ElectionDataFastIO}
 import org.greatcactus.vote.count.federal.FederalSenateCount
 import org.greatcactus.vote.count.margin.ElectionChanged
@@ -29,6 +30,7 @@ object MainApp extends App {
     """
       | Allowable arguments
       | --stv <file>               specify file of election information, in Andrew stv format. You can get format and data from vote.andrewconway.org
+      | --out <dirname>            specify directory to write output (full distribution of preferences) to. Will be created if not currently existing. Default is a subdirectory of current directory based on name of election in stv file.
       | --rules rulename           specify rules used for running the election. Default "federal".
       | --NumSeats number          specify number of candidates to elect (default 6).
       | --ECOrder candidatelist    specify a comma separated list of candidate numbers that define the order the EC breaks ties.
@@ -42,6 +44,7 @@ object MainApp extends App {
     var rules = "federal"
     var stvFile : Option[File] = None
     var modifyFile : Option[File] = None
+    var outDir : Option[File] = None
     var numSeats = 6
     var processedArgs = 0
     var ecOrder : List[Int] = Nil
@@ -66,6 +69,7 @@ object MainApp extends App {
     while (processedArgs<args.length) {
       nextArg() match {
         case "--stv" => stvFile=Some(nextArgFile())
+        case "--out" => outDir=Some(nextArgFile(false))
         case "--modify" => modifyFile=Some(nextArgFile())
         case "--rules" => rules=nextArg()
         case "--NumSeats" => numSeats=nextArgInt()
@@ -79,9 +83,9 @@ object MainApp extends App {
       }
     }
     if (stvFile.isEmpty) throw new IllegalArgException("Need to specify vote data file.")
-    def count(data:ElectionData) = {
+    def count(data:ElectionData): List[CandidateIndex] = {
       val winners = rules match {
-        case "federal" => FederalSenateCount.run(data, numSeats, ecOrder, Map.empty,None,exclude,None,prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected,doMarginOptimization)
+        case "federal" => FederalSenateCount.run(data, numSeats, ecOrder, Map.empty,None,exclude,outDir.map{new ReportSaverDirectory(_)},prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected,doMarginOptimization)
         case _ => throw new IllegalArgException("Don't understand rules : "+rules)
       }
       for (w<-winners) println("Winner : "+data.meta.candidates(w).name)
@@ -91,11 +95,9 @@ object MainApp extends App {
     val normalWinners = count(data)
     for (tampering<-modifyFile) {
       val newWinners = count(data.tamperMichelleFormat(tampering))
-      val change = new ElectionChanged(normalWinners,newWinners)
+      val change = ElectionChanged(normalWinners,newWinners)
       println("Change : "+change.descListWithGroups(data.meta))
     }
-    // TODO need to do something with manipulations
-
   } catch {
     case e:IllegalArgException => println("Error in arguments : "+e.getMessage)
   }
