@@ -47,7 +47,7 @@ object FederalElectionDataLoader2016 extends FederalElectionDataLoader("2016",tr
 
 object FederalElectionDataLoader2019 extends FederalElectionDataLoader("2019",false) {
   override val pageURL = "https://tallyroom.aec.gov.au/SenateDownloadsMenu-24310-Csv.htm"
-  def readOfficialResults2016(data:ElectionData) : AECDistributionOfPreferencesOfficial = readOfficialResults(data,24310,surnameFirst=true)
+  def readOfficialResults2019(data:ElectionData) : AECDistributionOfPreferencesOfficial = readOfficialResults(data,24310,surnameFirst=false)
 
   def getCandidateInfo(state:String) : AECCandidateInformationSource = new AECCandidateInformationSource2019(rel("2019federalelection-all-candidates-nat-24-04-1643.csv"))
   def getOtherInfo(state:String) : List[AECVoteSource] = List(getBTLInfo(state))
@@ -402,43 +402,3 @@ class GroupTicketBuilder(val groupId:String,val groupName:String,val groupShortN
   }
 }
 
-/*
-class IterateOverRawBTLData2016(val meta:ElectionMetadata,iterator:CSVHelper,column:Int) extends IterateOverRawBTLData {
-  var rowsSoFar : Int = 0
-  private var savedColumns : Array[String] = null
-
-  def foreach(f:Array[String]=>Unit) {
-    val numGroups = meta.groupInfo.length-(if (meta.groupInfo.last.groupId=="UG") 1 else 0) // can't do an ATL vote for UG.
-    val numCandidates = meta.candidates.length
-    val splitter = new Splitter
-    for (cols<-iterator) {
-      val prefstr = cols(column) // contains a comma separated string containing written preferences, first for ATL then BTL.
-      val votes = splitter.split(prefstr)
-      if (votes.length!=numGroups+numCandidates) throw new IOException("Internal error. Do not understand vote "+prefstr+" found "+votes.length+" entries expecting "+numGroups+" ATL and "+numCandidates+" BTL.")
-      else {
-        val (_,btl) = votes.splitAt(numGroups)
-        val isBTL = btl.exists { ! _.isEmpty }
-        if (isBTL) {
-          savedColumns = cols
-          f(btl)
-          rowsSoFar+=1
-        }
-      }
-    }
-  }
-
-  override def currentRowMetadata: Map[String, String] = Map("Electorate"->savedColumns(0),"Collection Point"->savedColumns(1))
-}
-*/
-/*
-object FederalIterateOverRawBTLData {
-  def get(year:String,state:String) : IterateOverRawBTLData = {
-    val meta = FederalElectionData.loadRawMetadata(year,state)
-    year match {
-      case "2016" => FederalElectionDataLoader2016.getIterator(state)  // new IterateOverRawBTLData2016(meta,CSVHelper.fromZipFile(FederalElectionDataLoader2016.rel("aec-senate-formalpreferences-20499-"+state+".zip"), state+".csv",2),5)
-      case "2019" => FederalElectionDataLoader2019.getIterator(state)
-      case _ => throw new IOException("No preference data available for "+year)
-    }
-  }
-}
-*/

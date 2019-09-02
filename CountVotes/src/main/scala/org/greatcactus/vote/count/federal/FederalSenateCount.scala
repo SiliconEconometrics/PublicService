@@ -28,7 +28,7 @@ import org.greatcactus.vote.count.federal.parsing.{FederalElectionDataLoader2013
 object FederalSenateCount2013App extends App {
 
   def run(state:String,toBeElected:Int,aecDeemedOrder:Seq[Int],ticketRoundingChoices:Map[String,Int],/** For double dissolution, use to determine which senators get 6 years */ secondRoundNumElected:Option[Int]=None) {
-    FederalSenateCount.run(FederalElectionDataLoader2013.load(state), toBeElected, aecDeemedOrder, ticketRoundingChoices, secondRoundNumElected)
+    FederalSenateCount.run(rawvotes = FederalElectionDataLoader2013.load(state), toBeElected = toBeElected, aecDeemedOrder = aecDeemedOrder, ticketRoundingChoices = ticketRoundingChoices, secondRoundNumElected = secondRoundNumElected,ineligible = Set.empty,explicitSaver = None,prohibitMultipleEliminations = false,finishExclusionEvenIfAllWillBeElected = false,finishSuplusDistributionEvenIfEveryoneWillGetElected = false,interruptExclusionAtStartOfExclusionIfAllWillBeElected = false,doMarginOptimization = false)
   }
   run("NT",2,DeducedAEC2013Orders.nt,DeducedAEC2013TicketSplits.nt)
   run("ACT",2,DeducedAEC2013Orders.act,DeducedAEC2013TicketSplits.act)
@@ -42,9 +42,10 @@ object FederalSenateCount2013App extends App {
 
 object FederalSenateCount2016App extends App {
 
+  val doMarginOptimization = true
   def run(state:String,toBeElected:Int,aecDeemedOrder:Seq[Int],doHalf:Boolean=true,ineligible:Set[Int]=Set.empty): Unit = {
     val data = FederalElectionDataLoader2016.load(state)
-    FederalSenateCount.run(data,  toBeElected, aecDeemedOrder, Map.empty, if (doHalf) Some(toBeElected/2) else None,ineligible,None,prohibitMultipleEliminations = true,finishExclusionEvenIfAllWillBeElected = true,finishSuplusDistributionEvenIfEveryoneWillGetElected = true)
+    FederalSenateCount.run(data,  toBeElected, aecDeemedOrder, Map.empty, if (doHalf) Some(toBeElected/2) else None,ineligible,None,prohibitMultipleEliminations = true,finishExclusionEvenIfAllWillBeElected = true,finishSuplusDistributionEvenIfEveryoneWillGetElected = true,interruptExclusionAtStartOfExclusionIfAllWillBeElected = true,doMarginOptimization=doMarginOptimization)
   }
   
   /* Do everything */
@@ -65,21 +66,22 @@ object FederalSenateCount2016App extends App {
 
 object FederalSenateCount2019App extends App {
 
+  val doMarginOptimization = true
   def run(state:String,toBeElected:Int,aecDeemedOrder:Seq[Int],ineligible:Set[Int]=Set.empty): Unit = {
     val data = FederalElectionDataLoader2019.load(state)
-    FederalSenateCount.run(data, toBeElected, aecDeemedOrder, Map.empty,None,ineligible,None,prohibitMultipleEliminations = true,finishExclusionEvenIfAllWillBeElected = true,finishSuplusDistributionEvenIfEveryoneWillGetElected = true)
+    FederalSenateCount.run(data, toBeElected, aecDeemedOrder, Map.empty,None,ineligible,None,prohibitMultipleEliminations = true,finishExclusionEvenIfAllWillBeElected = true,finishSuplusDistributionEvenIfEveryoneWillGetElected = true,interruptExclusionAtStartOfExclusionIfAllWillBeElected = true,doMarginOptimization=doMarginOptimization)
   }
 
   /* Do everything */
 
-  //run("NSW",6,DeducedAEC2019Orders.nsw)
-  //run("QLD",6,DeducedAEC2019Orders.qld)
-  //run("VIC",6,DeducedAEC2019Orders.vic)
-  //run("NT",2,DeducedAEC2019Orders.nt)
+  run("NSW",6,DeducedAEC2019Orders.nsw)
+  run("QLD",6,DeducedAEC2019Orders.qld)
+  run("VIC",6,DeducedAEC2019Orders.vic)
+  run("NT",2,DeducedAEC2019Orders.nt)
   run("ACT",2,DeducedAEC2019Orders.act)
-  //run("TAS",6,DeducedAEC2019Orders.tas)
-  //run("WA",6,DeducedAEC2019Orders.wa)
-  //run("SA",6,DeducedAEC2019Orders.sa)
+  run("TAS",6,DeducedAEC2019Orders.tas)
+  run("WA",6,DeducedAEC2019Orders.wa)
+  run("SA",6,DeducedAEC2019Orders.sa)
 }
 
 
@@ -91,9 +93,9 @@ object DeducedAEC2013Orders {
   val nt = List()
   val sa = List(53,41)
   val wa = List(29,15)
-  val nsw = List(54,52,82)++List(72,68,104)++List(7,56)++List(96,12,20)
+  val nsw: List[CandidateIndex] = List(54,52,82)++List(72,68,104)++List(7,56)++List(96,12,20)
   val act = List()
-  val tas = List(44,40,38)++List(50,17)
+  val tas: List[CandidateIndex] = List(44,40,38)++List(50,17)
   val qld = List(59,25)
 }
 object DeducedAEC2016Orders {
@@ -158,17 +160,17 @@ object CheckEffectOfOddVotersForTickets {
 object FederalSenateCount {
 //  val doMarginOptimization = true // really slows it down
 
-  def run(rawvotes:ElectionData,toBeElected:Int,aecDeemedOrder:Seq[Int],ticketRoundingChoices:Map[String,Int],/** For double dissolution, use to determine which senators get 6 years */ secondRoundNumElected:Option[Int]=None,ineligible:Set[Int]=Set.empty,explicitSaver:Option[ReportSaver]=None,prohibitMultipleEliminations:Boolean=false,finishExclusionEvenIfAllWillBeElected:Boolean=false,finishSuplusDistributionEvenIfEveryoneWillGetElected:Boolean=false,doMarginOptimization:Boolean=false) : List[CandidateIndex] = {
+  def run(rawvotes:ElectionData,toBeElected:Int,aecDeemedOrder:Seq[Int],ticketRoundingChoices:Map[String,Int],/** For double dissolution, use to determine which senators get 6 years */ secondRoundNumElected:Option[Int]=None,ineligible:Set[Int]=Set.empty,explicitSaver:Option[ReportSaver]=None,prohibitMultipleEliminations:Boolean=false,finishExclusionEvenIfAllWillBeElected:Boolean=false,finishSuplusDistributionEvenIfEveryoneWillGetElected:Boolean=false,interruptExclusionAtStartOfExclusionIfAllWillBeElected : Boolean,doMarginOptimization:Boolean) : List[CandidateIndex] = {
     val reportDir = explicitSaver.getOrElse(new ReportSaverDirectory(new java.io.File("Federal"+rawvotes.meta.electionName.year+"Reports/"+rawvotes.meta.electionName.electorate+ineligible.map{i=>" no "+rawvotes.candidates(i).name}.mkString(""))))
     rawvotes.printStatus()
-    val worker = new FederalSenateCountHelper(rawvotes,toBeElected,ticketRoundingChoices,aecDeemedOrder,true,ineligible,prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected)
+    val worker = new FederalSenateCountHelper(rawvotes,toBeElected,ticketRoundingChoices,aecDeemedOrder,true,ineligible,prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected,interruptExclusionAtStartOfExclusionIfAllWillBeElected)
     worker.run(if (doMarginOptimization) Some(reportDir) else None)
     ElectionReport.saveReports(reportDir,worker.report,rawvotes)
     for (secondRound<-secondRoundNumElected) {
-      val worker2a = new FederalSenateCountHelper(rawvotes,secondRound,ticketRoundingChoices,aecDeemedOrder,true,ineligible,prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected)
+      val worker2a = new FederalSenateCountHelper(rawvotes,secondRound,ticketRoundingChoices,aecDeemedOrder,true,ineligible,prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected,interruptExclusionAtStartOfExclusionIfAllWillBeElected)
       worker2a.run(None)
       ElectionReport.saveReports(reportDir.subdir("Electing"+secondRound),worker2a.report,rawvotes)
-      val worker2b = new FederalSenateCountHelper(rawvotes,secondRound,ticketRoundingChoices,aecDeemedOrder,true,(0 until rawvotes.numCandidates).toSet--worker.report.electedCandidates,prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected)
+      val worker2b = new FederalSenateCountHelper(rawvotes,secondRound,ticketRoundingChoices,aecDeemedOrder,true,(0 until rawvotes.numCandidates).toSet--worker.report.electedCandidates,prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected,interruptExclusionAtStartOfExclusionIfAllWillBeElected)
       worker2b.run(None)
       ElectionReport.saveReports(reportDir.subdir("Electing"+secondRound+"OutOf"+toBeElected),worker2b.report,rawvotes)
     }
@@ -181,7 +183,7 @@ object FederalSenateCount {
  * Do the work of counting for the federal senate, based on 
  * http://www.austlii.edu.au/au/legis/cth/consol_act/cea1918233/s273.html
  */
-class FederalSenateCountHelper(data:ElectionData,candidatesToBeElected:Int,ticketRoundingChoices:Map[String,Int],aecDeemedOrder:Seq[CandidateIndex],printDebugMessages:Boolean,ineligibleCandidates:Set[CandidateIndex],prohibitMultipleEliminations:Boolean,override val finishExclusionEvenIfAllWillBeElected:Boolean,override val finishSuplusDistributionEvenIfEveryoneWillGetElected : Boolean)
+class FederalSenateCountHelper(data:ElectionData,candidatesToBeElected:Int,ticketRoundingChoices:Map[String,Int],aecDeemedOrder:Seq[CandidateIndex],printDebugMessages:Boolean,ineligibleCandidates:Set[CandidateIndex],prohibitMultipleEliminations:Boolean,override val finishExclusionEvenIfAllWillBeElected:Boolean,override val finishSuplusDistributionEvenIfEveryoneWillGetElected : Boolean,override val interruptExclusionAtStartOfExclusionIfAllWillBeElected : Boolean)
      extends WeightedCountHelper(data,candidatesToBeElected,ticketRoundingChoices:Map[String,Int],aecDeemedOrder,printDebugMessages,ineligibleCandidates) {
   
   override def shouldSeparateBallotsBySourceCountNumber : HowSplitByCountNumber = DoNotSplitByCountNumber
@@ -286,24 +288,9 @@ class FederalSenateCountHelper(data:ElectionData,candidatesToBeElected:Int,ticke
     val excludeList = candidatesForExclusion(continuingCandidates.orderedList,isReal = true,tallys)
     new CandidateToExclude(excludeList,continuingCandidates.couldAECHaveToMakeDecision(excludeList.head))
   }
-  
-/*
 
-  /** Rerun the election, with some changes specified by margin. Return the candidates elected. */
-  def rerunElectionModifiedData(margin:Margin, name:String, saveReports:Boolean, saveDatafile:Boolean, marginReportLocation:Option[ReportSaver]) : List[CandidateIndex] = {
-        val newdata = data.tamper(margin,"_tamper_exclude_"+name)
-        val newworker = new FederalSenateCountHelper(newdata,candidatesToBeElected,ticketRoundingChoices,aecDeemedOrder,WhatMarginInformationToCompute.none,false,ineligibleCandidates,prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected)
-        newworker.run(None)
-        for (baseDir<-marginReportLocation) {
-          val dir = baseDir.subdir(name)
-          if (saveReports) ElectionReport.saveReports(dir,newworker.report,newdata)
-          if (saveDatafile) dir.write(newdata.meta.electionName.shortFileName+".txt",w=>ElectionDataFastIO.savePickled(newdata,w))
-        }
-        newworker.report.electedCandidates.toList
-  }
-*/
   override def newWorker(newdata:ElectionData):WeightedCountHelper = {
-    new FederalSenateCountHelper(newdata,candidatesToBeElected,ticketRoundingChoices,aecDeemedOrder,false,ineligibleCandidates,prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected)
+    new FederalSenateCountHelper(newdata,candidatesToBeElected,ticketRoundingChoices,aecDeemedOrder,false,ineligibleCandidates,prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected,interruptExclusionAtStartOfExclusionIfAllWillBeElected)
   }
 
   override def afterRunningStatistics(): Unit = {

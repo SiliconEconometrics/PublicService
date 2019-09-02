@@ -150,7 +150,8 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
   def sortedForExclusion(votes:WeightedVotes) : List[((TransferValue,CountNumber),PlainVotes)] 
   def finishExclusionEvenIfAllVacanciesFilled : Boolean
   def finishExclusionEvenIfAllWillBeElected : Boolean
-  def finishSuplusDistributionEvenIfEveryoneWillGetElected : Boolean
+  def interruptExclusionAtStartOfExclusionIfAllWillBeElected : Boolean = false // interpretation used by AEC in 2019. Section 18 is checked before an exclusion is done.
+  def finishSuplusDistributionEvenIfEveryoneWillGetElected : Boolean           // interpretation used by AEC in 2016.
 
   
   // step (13AA) federal
@@ -161,9 +162,12 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
     var choiceWasArbitary : Option[Set[CandidateIndex]] = candidateToExclude.tiesBetweenBrokenByECChoice // continuingCandidates.couldAECHaveToMakeDecision(candidates.head)
 
     continuingCandidates--=candidates
+    // 18 can interrupt exclusion at this point.
+    val dontBotherDoingAnyWork = continuingCandidates.length==remainingVacancies && interruptExclusionAtStartOfExclusionIfAllWillBeElected
+
     // (13AA)(a) transfer TV=1 votes with TV 1, can be done
     val summedVotes : WeightedVotes = candidates.map{ballots(_)}.reduce{_ + _}
-    val orderedWork = sortedForExclusion(summedVotes)
+    val orderedWork = if (dontBotherDoingAnyWork) Nil else sortedForExclusion(summedVotes)
     val (lastTV,lastFC) = orderedWork.lastOption.map{_._1}.getOrElse((0,0))
     for (((transferValue:TransferValue,fromCount),votes:PlainVotes)<-orderedWork) if (remainingVacancies>0 || finishExclusionEvenIfAllVacanciesFilled) { 
       report.declareCandidatesExcluded(candidates, votes.whereCameFrom,transferValue)

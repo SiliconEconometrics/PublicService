@@ -36,8 +36,9 @@ object MainApp extends App {
       | --ECOrder candidatelist    specify a comma separated list of candidate numbers that define the order the EC breaks ties.
       | --exclude candidatelist    specify a comma separated list of candidate numbers to be deemed ineligible
       | --prohibitMultipleEliminations                           For federal elections, don't use section 13(A) multiple eliminations. AEC didn't use this in 2016 and 2019.
-      | --finishExclusionEvenIfAllWillBeElected                  Don't stop an exclusion just because the election is over. AEC did this in 2016 and 2019. Doesn't affect who is elected, only reports.
-      | --finishSuplusDistributionEvenIfEveryoneWillGetElected   Don't stop an surplus distribution just because the election is over. AEC did this in 2016 and 2019. Doesn't affect who is elected, only reports
+      | --finishExclusionEvenIfAllWillBeElected                  Don't stop an exclusion just because the election is over. AEC did this in 2016. Doesn't affect who is elected, only reports.
+      | --finishSuplusDistributionEvenIfEveryoneWillGetElected   Don't stop an surplus distribution just because the election is over. AEC did this in 2016. Doesn't affect who is elected, only reports
+      | --interruptExclusionAtStartOfExclusionIfAllWillBeElected Do stop an exclusion before even the first step because the election is over. AEC did this in 2019. Doesn't affect who is elected, only reports.
       | --doMarginOptimization     try to compute margins (very slow)
       | --modify file              specify a file of modifications to the votes
       |      |    """.stripMargin) else try {
@@ -52,6 +53,7 @@ object MainApp extends App {
     var prohibitMultipleEliminations = false
     var finishExclusionEvenIfAllWillBeElected = false
     var finishSuplusDistributionEvenIfEveryoneWillGetElected = false
+    var interruptExclusionAtStartOfExclusionIfAllWillBeElected = false
     var doMarginOptimization = false
     def nextArg() : String = {
       if (processedArgs==args.length) throw new IllegalArgException("Missing final argument")
@@ -78,6 +80,7 @@ object MainApp extends App {
         case "--prohibitMultipleEliminations" => prohibitMultipleEliminations=true
         case "--finishExclusionEvenIfAllWillBeElected" => finishExclusionEvenIfAllWillBeElected=true
         case "--finishSuplusDistributionEvenIfEveryoneWillGetElected" => finishSuplusDistributionEvenIfEveryoneWillGetElected=true
+        case "--interruptExclusionAtStartOfExclusionIfAllWillBeElected" => interruptExclusionAtStartOfExclusionIfAllWillBeElected=true
         case "--doMarginOptimization" => doMarginOptimization=true
         case unknown => throw new IllegalArgException("Unknown argument "+unknown)
       }
@@ -85,7 +88,7 @@ object MainApp extends App {
     if (stvFile.isEmpty) throw new IllegalArgException("Need to specify vote data file.")
     def count(data:ElectionData): List[CandidateIndex] = {
       val winners = rules match {
-        case "federal" => FederalSenateCount.run(data, numSeats, ecOrder, Map.empty,None,exclude,outDir.map{new ReportSaverDirectory(_)},prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected,doMarginOptimization)
+        case "federal" => FederalSenateCount.run(data, numSeats, ecOrder, Map.empty,None,exclude,outDir.map{new ReportSaverDirectory(_)},prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected,doMarginOptimization,interruptExclusionAtStartOfExclusionIfAllWillBeElected)
         case _ => throw new IllegalArgException("Don't understand rules : "+rules)
       }
       for (w<-winners) println("Winner : "+data.meta.candidates(w).name)

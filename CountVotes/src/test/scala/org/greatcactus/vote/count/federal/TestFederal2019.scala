@@ -18,22 +18,22 @@
 package org.greatcactus.vote.count.federal
 
 import org.greatcactus.vote.count._
-import org.greatcactus.vote.count.ballots.{DVote, Vote}
-import org.greatcactus.vote.count.federal.parsing.FederalElectionDataLoader2013
+import org.greatcactus.vote.count.federal.parsing.FederalElectionDataLoader2019
 import org.junit.Assert._
 import org.junit.Test
 
 /**
  * Test my algorithm against official distribution of preferences
  */
-class ZZZ_TestFederal2013 {
+class TestFederal2019 {
+
   FindBaseDir.findBaseDir()
 
-  def test(state:String,toBeElected:Int,ticketRoundingChoices:Map[String,Int],aecDeemedOrder:Seq[Int]) {
-    val data = FederalElectionDataLoader2013.load(state)
+  def test(state:String,toBeElected:Int,ticketRoundingChoices:Map[String,Int],aecDeemedOrder:Seq[Int],excluded:Set[Int]=Set.empty) {
+    val data = FederalElectionDataLoader2019.load(state)
     data.printStatus()
-    val officialResults = FederalElectionDataLoader2013.readOfficialResults2013(data)
-    val worker = new FederalSenateCountHelper(data,toBeElected,ticketRoundingChoices,aecDeemedOrder,printDebugMessages = true,ineligibleCandidates = Set.empty,prohibitMultipleEliminations = false,finishExclusionEvenIfAllWillBeElected = false,finishSuplusDistributionEvenIfEveryoneWillGetElected = false,interruptExclusionAtStartOfExclusionIfAllWillBeElected = false)
+    val officialResults = FederalElectionDataLoader2019.readOfficialResults2019(data)
+    val worker = new FederalSenateCountHelper(data,toBeElected,ticketRoundingChoices,aecDeemedOrder,true,excluded,prohibitMultipleEliminations = true,finishExclusionEvenIfAllWillBeElected = false,finishSuplusDistributionEvenIfEveryoneWillGetElected = false,interruptExclusionAtStartOfExclusionIfAllWillBeElected = true) // compare without multiple exclusions
     worker.run(None)
     val myreport = worker.report
 
@@ -42,8 +42,12 @@ class ZZZ_TestFederal2013 {
       val official = officialResults.counts(countNo)
       if (myreport.history.length<=countNo) fail("My report is too short, only "+myreport.history.length+" expecting "+officialResults.counts.length)
       val my = myreport.history(countNo)
+      //val totalVotesEnd = (0 until data.numCandidates).map{official.candidates(_).progressiveTotalVotes}.sum + official.exhausted.progressiveTotalVotes+official.rounding.progressiveTotalVotes
+      //println("Official sum of votes for "+desc+" is "+totalVotesEnd)
+      //val myVotesEnd = (0 until data.numCandidates).map{my.totalAtEnd}.sum + my.end.exhausedVotes+my.roundingAtEnd
+      //println("      my sum of votes for "+desc+" is "+myVotesEnd)
       // test candidates
-      for (i<-0 until data.numCandidates) {
+      for (i<-0 until data.numCandidates) if (!excluded.contains(i)) {
         val name = desc+" " + data.candidates(i).name
         val off = official.candidates(i)
         assertNotNull(name,off)
@@ -63,24 +67,13 @@ class ZZZ_TestFederal2013 {
     assertEquals("My report is too long",officialResults.counts.length,myreport.history.length)
   }
   
-	@Test def testNT() { test("NT",2,DeducedAEC2013TicketSplits.nt,DeducedAEC2013Orders.nt) }
-	@Test def testVIC() { test("VIC",6,DeducedAEC2013TicketSplits.vic,DeducedAEC2013Orders.vic) }
-  @Test def testNSW() { test("NSW",6,DeducedAEC2013TicketSplits.nsw,DeducedAEC2013Orders.nsw) }
-  @Test def testACT() { test("ACT",2,DeducedAEC2013TicketSplits.act,DeducedAEC2013Orders.act) }
-  @Test def testTAS() { test("TAS",6,DeducedAEC2013TicketSplits.tas,DeducedAEC2013Orders.tas) }
-  @Test def testSA() { test("SA",6,DeducedAEC2013TicketSplits.sa,DeducedAEC2013Orders.sa) } // IMPORTANT NOTE! THIS PRODUCES SLIGHTLY DIFFERENT RESULTS TO OFFICIAL.
-  @Test def testWA() { test("WA",6,DeducedAEC2013TicketSplits.wa,DeducedAEC2013Orders.wa) }
-  @Test def testQLD() { test("QLD",6,DeducedAEC2013TicketSplits.qld,DeducedAEC2013Orders.qld) }
+	@Test def testNT() { test("NT",2,Map.empty,DeducedAEC2019Orders.nt) }
+	@Test def testVIC() { test("VIC",6,Map.empty,DeducedAEC2019Orders.vic) }
+  @Test def testNSW() { test("NSW",6,Map.empty,DeducedAEC2019Orders.nsw) }
+  @Test def testACT() { test("ACT",2,Map.empty,DeducedAEC2019Orders.act) }
+  @Test def testTAS() { test("TAS",6,Map.empty,DeducedAEC2019Orders.tas) }
+  @Test def testSA() { test("SA",6,Map.empty,DeducedAEC2019Orders.sa) }
+  @Test def testWA() { test("WA",6,Map.empty,DeducedAEC2019Orders.wa) }
+  @Test def testQLD() { test("QLD",6,Map.empty,DeducedAEC2019Orders.qld) }
   
-  
-  @Test def testSAexhaustion() {
-    val data = FederalElectionDataLoader2013.load("SA")
-    val votes : Array[Vote] = data.makeVotes(DeducedAEC2013TicketSplits.sa)
-    val dvotes : Array[DVote] = for (v<-votes) yield new DVote(0,v.numVoters,v.preferences,v.src)
-    val continuing = Set(2,14,68)
-    val redvotes = dvotes.map{_.skipNotContinuingCandidates(continuing)}
-    val exhausted = redvotes.filter { _.isExhausted }
-    val numexhausted = exhausted.map{_.numVoters}.sum
-    println("Numexhausted = "+numexhausted)
-  }
 }

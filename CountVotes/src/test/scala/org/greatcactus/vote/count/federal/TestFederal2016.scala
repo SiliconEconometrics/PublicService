@@ -29,11 +29,11 @@ class TestFederal2016 {
 
   FindBaseDir.findBaseDir()
 
-  def test(state:String,toBeElected:Int,ticketRoundingChoices:Map[String,Int],aecDeemedOrder:Seq[Int],excluded:Set[Int]=Set.empty) {
+  def test(state:String,toBeElected:Int,aecDeemedOrder:Seq[Int],excluded:Set[Int]=Set.empty) {
     val data = FederalElectionDataLoader2016.load(state)
     data.printStatus()
     val officialResults = FederalElectionDataLoader2016.readOfficialResults2016(data)
-    val worker = new FederalSenateCountHelper(data,toBeElected,ticketRoundingChoices,aecDeemedOrder,true,excluded,true,true,true) // compare without multiple exclusions
+    val worker = new FederalSenateCountHelper(data,toBeElected,Map.empty,aecDeemedOrder,printDebugMessages = true,ineligibleCandidates = excluded,prohibitMultipleEliminations = true,finishExclusionEvenIfAllWillBeElected = true,finishSuplusDistributionEvenIfEveryoneWillGetElected = true,interruptExclusionAtStartOfExclusionIfAllWillBeElected = false) // compare without multiple exclusions
     worker.run(None)
     val myreport = worker.report
 
@@ -67,13 +67,13 @@ class TestFederal2016 {
     assertEquals("My report is too long",officialResults.counts.length,myreport.history.length)
   }
   
-	@Test def testNT() { test("NT",2,DeducedAEC2013TicketSplits.nt,DeducedAEC2013Orders.nt) }
-	@Test def testVIC() { test("VIC",12,DeducedAEC2013TicketSplits.vic,DeducedAEC2013Orders.vic) }
-  @Test def testNSW() { test("NSW",12,DeducedAEC2013TicketSplits.nsw,DeducedAEC2013Orders.nsw) }
-  @Test def testACT() { test("ACT",2,DeducedAEC2013TicketSplits.act,DeducedAEC2013Orders.act) }
-  @Test def testTAS() { test("TAS",12,DeducedAEC2013TicketSplits.tas,DeducedAEC2013Orders.tas) }
-  @Test def testSA() { test("SA",12,DeducedAEC2013TicketSplits.sa,DeducedAEC2013Orders.sa,Set(38)) } // Bob Day is excluded
-  @Test def testWA() { test("WA",12,DeducedAEC2013TicketSplits.wa,DeducedAEC2013Orders.wa,Set(45)) } // Robert Cullerton is excluded
-  @Test def testQLD() { test("QLD",12,DeducedAEC2013TicketSplits.qld,DeducedAEC2013Orders.qld) }
+	@Test def testNT() { test("NT",2,DeducedAEC2016Orders.nt) }
+	@Test def testVIC() { test("VIC",12,DeducedAEC2016Orders.vic) }
+  @Test def testNSW() { test("NSW",12,DeducedAEC2016Orders.nsw) }
+  @Test def testACT() { test("ACT",2,DeducedAEC2016Orders.act) }
+  @Test def testTAS() { test("TAS",12,DeducedAEC2016Orders.tas) }
+  @Test def testSA() { test("SA",12,DeducedAEC2016Orders.sa,Set(38)) } // Bob Day is excluded
+  @Test def testWA() { test("WA",12,DeducedAEC2016Orders.wa,Set(45)) } // Robert Cullerton is excluded
+  @Test def testQLD() { test("QLD",12,DeducedAEC2016Orders.qld) }
   
 }
