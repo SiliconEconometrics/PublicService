@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -29,6 +29,7 @@ import org.greatcactus.vote.count.margin.{BestMarginsRecorder, ElectionChanged, 
 import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
 import org.greatcactus.vote.count.MainDataTypes.Tally
 import org.greatcactus.vote.count.ballots.{Candidate, ElectionData, ElectionMetadata}
+import org.greatcactus.vote.count.report.MichelleSTVOutputFormat
 
 import scala.collection.AbstractSeq
 
@@ -312,6 +313,7 @@ object ElectionReport {
   def saveReports(saver:ReportSaver,result:ElectionResultReport,data:ElectionData) {
     // dir.mkdirs()
     createCSS(saver)
+    saver.write("MichelleSummary.txt",writer=>{MichelleSTVOutputFormat.print(new PrintWriter(writer),result)})
     saver.save("Summary.html",generateSummaryReport(result,data.meta))
     val overall = generateOverallReport(result,result.candidates,data)
     saver.save("About.html",overall)
