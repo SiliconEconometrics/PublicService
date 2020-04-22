@@ -1,5 +1,5 @@
 /*
-    Copyright 2016-2019 Silicon Econometrics Pty. Ltd.
+    Copyright 2016-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -165,14 +165,14 @@ object FederalSenateCount {
     rawvotes.printStatus()
     val worker = new FederalSenateCountHelper(rawvotes,toBeElected,ticketRoundingChoices,aecDeemedOrder,true,ineligible,prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected,interruptExclusionAtStartOfExclusionIfAllWillBeElected)
     worker.run(if (doMarginOptimization) Some(reportDir) else None)
-    ElectionReport.saveReports(reportDir,worker.report,rawvotes)
+    ElectionReport.saveReports(reportDir,worker.report,rawvotes.meta)
     for (secondRound<-secondRoundNumElected) {
       val worker2a = new FederalSenateCountHelper(rawvotes,secondRound,ticketRoundingChoices,aecDeemedOrder,true,ineligible,prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected,interruptExclusionAtStartOfExclusionIfAllWillBeElected)
       worker2a.run(None)
-      ElectionReport.saveReports(reportDir.subdir("Electing"+secondRound),worker2a.report,rawvotes)
+      ElectionReport.saveReports(reportDir.subdir("Electing"+secondRound),worker2a.report,rawvotes.meta)
       val worker2b = new FederalSenateCountHelper(rawvotes,secondRound,ticketRoundingChoices,aecDeemedOrder,true,(0 until rawvotes.numCandidates).toSet--worker.report.electedCandidates,prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected,interruptExclusionAtStartOfExclusionIfAllWillBeElected)
       worker2b.run(None)
-      ElectionReport.saveReports(reportDir.subdir("Electing"+secondRound+"OutOf"+toBeElected),worker2b.report,rawvotes)
+      ElectionReport.saveReports(reportDir.subdir("Electing"+secondRound+"OutOf"+toBeElected),worker2b.report,rawvotes.meta)
     }
     worker.report.electedCandidates.toList
   }

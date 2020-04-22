@@ -14,6 +14,6 @@ object WA2013 extends App {
     val ecDeemedOrder:Seq[Int] = List()
     val worker = new WAElectionHelper (data,officialResult.vacancies,ticketRoundingChoices,ecDeemedOrder,false,Set.empty)
     worker.run()
-    ElectionReport.saveReports(new File(reportDir,data.meta.electionName.shortFileName),worker.report,data)
+    ElectionReport.saveReports(new File(reportDir,data.meta.electionName.shortFileName),worker.report,data.meta)
 
 }

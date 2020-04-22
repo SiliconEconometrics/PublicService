@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -24,11 +24,10 @@ import java.io.File
 import java.util.zip.ZipFile
 import java.io.InputStreamReader
 
-import org.greatcactus.vote.count.IOUtil
+import org.greatcactus.vote.count.StochasticReportOptions
 import org.greatcactus.vote.count.ballots._
 import org.greatcactus.vote.count.ballots.parsing.VoteInterpreter
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
+
 
 
 object RunNSWStateElectionProbabilistically extends App {
@@ -44,7 +43,7 @@ object RunNSWStateElectionProbabilistically extends App {
 
 object CheckNSWStateDOP extends App {
  // NSWStateElectionData2019.downloadDOP(Array())
-  val data = NSWStateElectionData2019.load(false,true)
+  val data = NSWStateElectionData2019.load(useIvote = false,useNormal = true)
   data.printStatus()
 }
 

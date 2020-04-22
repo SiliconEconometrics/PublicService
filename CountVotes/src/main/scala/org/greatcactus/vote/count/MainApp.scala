@@ -1,5 +1,5 @@
 /*
-    Copyright 2016-2019 Silicon Econometrics Pty. Ltd.
+    Copyright 2016-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -21,9 +21,11 @@ package org.greatcactus.vote.count
 import java.io.File
 
 import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
-import org.greatcactus.vote.count.ballots.{ElectionData, ElectionDataFastIO}
-import org.greatcactus.vote.count.federal.FederalSenateCount
+import org.greatcactus.vote.count.ballots.{ElectionData, ElectionDataFastIO, OCRError}
+import org.greatcactus.vote.count.federal.{FederalSenateCount, FederalSenateCountHelper}
 import org.greatcactus.vote.count.margin.ElectionChanged
+
+import scala.util.Random
 
 object MainApp extends App {
   if (args.length==0) println(
@@ -41,13 +43,21 @@ object MainApp extends App {
       | --interruptExclusionAtStartOfExclusionIfAllWillBeElected Do stop an exclusion before even the first step because the election is over. AEC did this in 2019. Doesn't affect who is elected, only reports.
       | --doMarginOptimization     try to compute margins (very slow)
       | --modify file              specify a file of modifications to the votes
-      |      |    """.stripMargin) else try {
+      | --ocrErr spec              run with simulated ocr errors. spec can be
+      |         Truncate:p  for all positions, truncate at position with probability p.
+      |         DigitError:p  for all digits, replaced with random digit (possibly self) with probability p
+      |         DigitTable:p00,p01,p02...p09,p10,p11...p99 replace digit i with j with probability pij
+      | --numRuns n                specify number of times to rerun with simulated ocr modification errors. (default 1)
+      | --numThreads n             specify number of threads to use when running multiple times. (default 1)
+      |  """.stripMargin) else try {
     var rules = "federal"
     var stvFile : Option[File] = None
     var modifyFile : Option[File] = None
     var outDir : Option[File] = None
     var numSeats = 6
     var processedArgs = 0
+    var numRuns = 1
+    var numThreads = 1
     var ecOrder : List[Int] = Nil
     var exclude : Set[Int] = Set.empty
     var prohibitMultipleEliminations = false
@@ -55,6 +65,7 @@ object MainApp extends App {
     var finishSuplusDistributionEvenIfEveryoneWillGetElected = false
     var interruptExclusionAtStartOfExclusionIfAllWillBeElected = false
     var doMarginOptimization = false
+    var ocrError : Option[OCRError] = None
     def nextArg() : String = {
       if (processedArgs==args.length) throw new IllegalArgException("Missing final argument")
       val res = args(processedArgs)
@@ -82,6 +93,9 @@ object MainApp extends App {
         case "--finishSuplusDistributionEvenIfEveryoneWillGetElected" => finishSuplusDistributionEvenIfEveryoneWillGetElected=true
         case "--interruptExclusionAtStartOfExclusionIfAllWillBeElected" => interruptExclusionAtStartOfExclusionIfAllWillBeElected=true
         case "--doMarginOptimization" => doMarginOptimization=true
+        case "--ocrErr" => ocrError = Some(OCRError(nextArg()))
+        case "--numRuns" => numRuns=nextArgInt()
+        case "--numThreads" => numThreads=nextArgInt()
         case unknown => throw new IllegalArgException("Unknown argument "+unknown)
       }
     }
@@ -100,6 +114,30 @@ object MainApp extends App {
       val newWinners = count(data.tamperMichelleFormat(tampering))
       val change = ElectionChanged(normalWinners,newWinners)
       println("Change : "+change.descListWithGroups(data.meta))
+    }
+    for (ocr<-ocrError) {
+      val minFormalATL = rules match {
+        case "federal" => 1  // 2016, 278 1(b)
+      }
+      val minFormalBTL = rules match {
+        case "federal" => 6  // 2016, 279 1(b)
+      }
+      val runner = new ProbabilisticRunner(None) {
+        /** Do the actual probabilistic run, possibly concurrently with other runs */
+        override def doOneRun(random: Random): ElectionResultReport = {
+          val newdata = data.simulateOCRerror(random,ocr,minFormalATL,minFormalBTL)
+          //ElectionDataFastIO.savePickled(newdata,new File("test.stl"))
+          //newdata.printStatus()
+          rules match {
+            case "federal" =>
+              val worker = new FederalSenateCountHelper(newdata,numSeats,Map.empty,ecOrder,false,exclude,prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected,interruptExclusionAtStartOfExclusionIfAllWillBeElected)
+              worker.run(None)
+              //ElectionReport.saveReports(new File("OCR"),worker.report,newdata.meta)
+              worker.report
+          }
+        }
+      }
+      runner.runProbabilisticly(data.meta,numRuns,numThreads,true,None)
     }
   } catch {
     case e:IllegalArgException => println("Error in arguments : "+e.getMessage)

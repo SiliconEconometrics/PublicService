@@ -1,5 +1,5 @@
 /*
-    Copyright 2017-2018 Silicon Econometrics Pty. Ltd.
+    Copyright 2017-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -34,7 +34,7 @@ object RunVicElection extends App {
     val ecDeemedOrder:Seq[Int] = List.empty // WA2017OfficialResults.usedOrders.getOrElse(region.data.meta.electionName.electorate,List.empty)
     val worker = new VicElectionHelper (data,5,ticketRoundingChoices,ecDeemedOrder,printDebugMessages,Set.empty)
     worker.run()
-    ElectionReport.saveReports(new File(reportDir,data.meta.electionName.electorate),worker.report,data)
+    ElectionReport.saveReports(new File(reportDir,data.meta.electionName.electorate),worker.report,data.meta)
   }
   
 }

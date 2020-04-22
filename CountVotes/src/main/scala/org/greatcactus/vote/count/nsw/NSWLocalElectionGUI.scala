@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -96,7 +96,7 @@ class NSWElectionGUIInfo {
   frame.pack()
   frame.setVisible(true)
 
-  val output = new StatusOutput {
+  val output = new StochasticStatusOutput {
     def status(isFinished:Boolean,heading:String,margin:String,candidates:IndexedSeq[CandidateStat]) {
        if (isFinished) SwingUtil.inSwingThread{goButton.setEnabled(true);fileChooser.setEnabled(true)}
        val running = if (isFinished) "<p><b>Finished</b></p>" else "<p><b>Running</b></p>"

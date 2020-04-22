@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -38,7 +38,7 @@ object RunElection extends App {
   val random = new Random
   val worker = new NSWElectionHelper(rawstats,21,random,NSWLegislativeCouncilRules,Set.empty)
   worker.run()
-  ElectionReport.saveReports(new java.io.File(NSWStateElectionData2019.reportDir,"Single Run"+(if (useIvote) " iVote" else "")+(if (useNormal) " Normal" else "")),worker.report,rawstats)
+  ElectionReport.saveReports(new java.io.File(NSWStateElectionData2019.reportDir,"Single Run"+(if (useIvote) " iVote" else "")+(if (useNormal) " Normal" else "")),worker.report,rawstats.meta)
   //println("\n\nIVOTE\n")
   //val ivote = LoadFromFile.load(true)
   //ivote.printStatus()

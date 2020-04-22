@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -18,7 +18,8 @@
 
 package org.greatcactus.vote.count.ballots
 
-import java.io.{BufferedReader, File, FileReader}
+import java.io.File
+import java.util
 
 import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
 import org.greatcactus.vote.count.ballots.GroupInformation.{GroupID, GroupIndex}
@@ -28,6 +29,7 @@ import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.io.Source
 import scala.reflect.ClassTag
+import scala.util.Random
 
 
 /**
@@ -151,7 +153,7 @@ sealed class ElectionData(
       existingVotes.getOrElseUpdate(mutable.WrappedArray.make(v.preferences),new ArrayBuffer[VoteSource]())+=v.src
     }
     try {
-      var mode : String = "";
+      var mode : String = ""
       for (line<-source.getLines) line match {
         case "Add Ballots" => mode=line
         case "Remove Ballots" => mode=line
@@ -178,7 +180,110 @@ sealed class ElectionData(
     } finally { source.close() }
     work.get
   }
+
+  /** Simulate an error rate in OCR reading to get new data */
+  def simulateOCRerror(r:Random,errorSource:OCRError,minFormalATL:Int,minFormatBTL:Int) : ElectionData = {
+    val newSATL = satls
+    val newRATLS = new ArrayBuffer[ATL]()
+    for (b<-ratls) {
+      var numUnchanged = 0
+      for (_<-0 until b.n) {
+        val marks = errorSource.change(r,numCandidates,b.groups, null)
+        if (b.groups.toList==marks.toList) numUnchanged+=1
+        else if (marks.length>=minFormalATL) newRATLS+=new ATL(marks,1)
+      }
+      if (numUnchanged==b.n) newRATLS+=b
+      else if (numUnchanged>0) newRATLS+=b.subset(numUnchanged)
+    }
+    val newBTL = new ArrayBuffer[BTL]()
+    for (b<-btls) {
+      var numUnchanged = 0
+      for (_<-0 until b.n) {
+        val marks = errorSource.change(r,numCandidates,b.candidates, -1)
+        if (util.Arrays.equals(b.candidates,marks)) numUnchanged+=1
+        else if (marks.length>=minFormatBTL) newBTL+=new BTL(marks,1)
+      }
+      if (numUnchanged==b.n) newBTL+=b
+      else if (numUnchanged>0) newBTL+=b.subset(numUnchanged)
+    }
+    new ElectionData(meta,newSATL,newRATLS.toArray,newBTL.toArray,numInformal)
+  }
   val getSimpleStatistics = new ElectionDataSimpleStatistics(numSATLs,numRATLs,numBTLs,ratls.length,btls.length,totalFormalVotes,numInformal,candidates.length,usesGroupVotingTickets,meta.downloadLocation)
+}
+
+object OCRError {
+
+  /** Parse a string describing an OCR error. Possibilities are :
+    *    Truncate:p  for all positions, truncate at position with probability p.
+    *    DigitError:p  for all digits, replaced with random digit (possibly self) with probability p
+    *    DigitTable:p00,p01,p02...p09,p10,p11...p99 replace digit i with j with probability pij
+    */
+  def apply(s:String): OCRError = {
+    val firstColonIndex = s.indexOf(':')
+    if (firstColonIndex== -1) throw new IllegalArgumentException("Bad OCRError description - expecting tag:probability(s)")
+    else {
+      val remaining = s.substring(firstColonIndex+1).split(',').map{_.toDouble}
+      s.substring(0,firstColonIndex) match {
+        case "Truncate" => if (remaining.length==1) new OCRErrorSimpleTruncation(remaining(0)) else throw new IllegalArgumentException("Bad OCRError description - expecting single probability after Truncate:")
+        case "DigitError" => if (remaining.length==1) new OCRErrorDigitSimpleError(remaining(0)) else throw new IllegalArgumentException("Bad OCRError description - expecting single probability after DigitError:")
+        case "DigitTable" => if (remaining.length==100) new OCRErrorDigitTable(Array.tabulate(10,10){(i:Int,j:Int)=>remaining(i*10+j)}) else throw new IllegalArgumentException("Bad OCRError description - expecting 100 colon separated probabilities after DigitTable:")
+        case other => throw new IllegalArgumentException("Bad OCRError description - unknown error type "+other)
+      }
+    }
+  }
+}
+
+abstract class OCRError {
+  def change[Marktype : ClassTag](r:Random,numPossibilities:Int,marks:Array[Marktype],badMark:Marktype):  Array[Marktype]
+}
+
+class OCRErrorSimpleTruncation(pTruncateAtGivenPoint:Double) extends OCRError {
+  override def change[Marktype: ClassTag](r: Random, numPossibilities: GroupIndex, marks: Array[Marktype], badMark: Marktype): Array[Marktype] = {
+    for (j<-marks.indices) {
+      if (r.nextDouble()<pTruncateAtGivenPoint) {
+        return marks.slice(0,j)
+      }
+    }
+    marks
+  }
+}
+
+abstract class OCRErrorDigit extends OCRError {
+  def errorDigit(r:Random,c:Char) : Char
+  def error(r:Random,n:Int) : Int = n.toString.map{errorDigit(r,_)}.toInt
+  def change[Marktype : ClassTag](r:Random,numPossibilities:Int,marks:Array[Marktype],badMark:Marktype):  Array[Marktype] = {
+    val byPref : Array[Marktype] = Array.fill(numPossibilities){badMark}
+    var doubleMarkIndex = numPossibilities
+    for (preference<-marks.indices) {
+      val errorPreference = error(r,preference+1)-1
+      //println("Converted "+(preference+1)+" to "+(errorPreference+1))
+      if (errorPreference<byPref.length && errorPreference>=0) {
+        if (byPref(errorPreference)==badMark) byPref(errorPreference)=marks(preference)
+        else if (errorPreference<doubleMarkIndex) doubleMarkIndex=errorPreference
+      }
+    }
+    val valid = byPref.indexOf(badMark)
+    val result = if (valid== -1) byPref else byPref.slice(0,valid min doubleMarkIndex)
+    //println("Changed "+marks.mkString(",")+" to "+result.mkString(","))
+    result
+  }
+}
+
+class OCRErrorDigitSimpleError(pError:Double) extends OCRErrorDigit {
+  override def errorDigit(r: Random, c: Char): Char = if (r.nextDouble()<pError) ('0'+r.nextInt(10)).toChar else c
+}
+
+/** Contain an array of probabilities of errors, with the first index being the from digit, and the second being the to digit. There are 10 indices, for '0' to '9'. */
+class OCRErrorDigitTable(pErrors:Array[Array[Double]]) extends OCRErrorDigit {
+  private val cumulativeSums : Array[Array[Double]] = pErrors.map{table => {val res = new Array[Double](10); res(0)=table(0); for (i<-1 to 9) res(i)=res(i-1)+table(i); res}}
+
+  override def errorDigit(r: Random, c: Char): Char = {
+    val d = r.nextDouble()
+    val cum = cumulativeSums(c-'0')
+    if (d<cum.last) {
+      ('0'+cum.indexWhere(_ < d)).toChar
+    } else c
+  }
 }
 
 class ElectionDataSimpleStatistics(val numSATLs:Int,val numRATLs:Int,val numBTLs:Int,val uniqueRATLs:Int,val uniqueBTLs:Int,val formalVotes:Int,val informalVotes:Int,val numCandidates:Int,val usesGroupVotingTickets:Boolean,val downloadLocation:Array[String])

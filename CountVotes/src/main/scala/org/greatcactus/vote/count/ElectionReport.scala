@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -55,7 +55,7 @@ object ElectionReport {
     saver.write("report.css",w=>{w.append(new String(reportCSS))})
   }
 
-  class DetailedReportHelper(data:ElectionData,report:ElectionResultReport,val useStartCounts:Boolean,val useDistributed:Boolean,val useTransferred:Boolean,val useSetAside:Boolean,val usePapers:Boolean,val usesNames:Boolean,val usesCount:Boolean) {
+  class DetailedReportHelper(data:ElectionMetadata,report:ElectionResultReport,val useStartCounts:Boolean,val useDistributed:Boolean,val useTransferred:Boolean,val useSetAside:Boolean,val usePapers:Boolean,val usesNames:Boolean,val usesCount:Boolean) {
     val candidates = data.candidates
     // val usePapers = 
     
@@ -82,7 +82,7 @@ object ElectionReport {
      }
   }
   
-  def generateReportForASingleCount(step:ElectionCountReport,number:Int,data:ElectionData,report:ElectionResultReport) = {
+  def generateReportForASingleCount(step:ElectionCountReport,number:Int,data:ElectionMetadata,report:ElectionResultReport) = {
     val candidates = data.candidates
     val t = step.countType
     val helper = new DetailedReportHelper(data,report,t.useStartCounts,t.useDistributed,t.useTransferred,t.useSetAside,step.usePapers,true,false)
@@ -118,7 +118,7 @@ object ElectionReport {
     </html>
   }
   
-  def generateReportForASingleIndividual(candidateID:Int,data:ElectionData,report:ElectionResultReport) = {
+  def generateReportForASingleIndividual(candidateID:Int,data:ElectionMetadata,report:ElectionResultReport) = {
     def existsT(f:CountReportType=>Boolean) : Boolean = report.history.exists { step => f(step.countType) }
     
     val candidate = data.candidates(candidateID)
@@ -227,7 +227,7 @@ object ElectionReport {
     </html>
   }
 */
-  def generateOverallReport(result:ElectionResultReport,candidates:Array[Candidate],data:ElectionData): Elem = {
+  def generateOverallReport(result:ElectionResultReport,candidates:Array[Candidate],data:ElectionMetadata): Elem = {
     <html>
       <head>
         <title>Election Process</title>
@@ -306,15 +306,15 @@ object ElectionReport {
     report
   }
 
-  def saveReports(dir:File,result:ElectionResultReport,data:ElectionData): Unit = {
+  def saveReports(dir:File,result:ElectionResultReport,data:ElectionMetadata): Unit = {
     saveReports(new ReportSaverDirectory(dir),result,data)
   }
  
-  def saveReports(saver:ReportSaver,result:ElectionResultReport,data:ElectionData) {
+  def saveReports(saver:ReportSaver,result:ElectionResultReport,data:ElectionMetadata) {
     // dir.mkdirs()
     createCSS(saver)
     saver.write("MichelleSummary.txt",writer=>{MichelleSTVOutputFormat.print(new PrintWriter(writer),result)})
-    saver.save("Summary.html",generateSummaryReport(result,data.meta))
+    saver.save("Summary.html",generateSummaryReport(result,data))
     val overall = generateOverallReport(result,result.candidates,data)
     saver.save("About.html",overall)
     for ((step,count)<-result.possiblyStochasticHistory.zipWithIndex) {
@@ -327,7 +327,7 @@ object ElectionReport {
       saver.save("candidate "+data.candidates(candidateID).name+".html",xml)
     }
     if (result.marginsRecorder.best.nonEmpty) {
-      saver.save("Margins.html",generateMarginReport(data.meta,result.marginsRecorder))
+      saver.save("Margins.html",generateMarginReport(data,result.marginsRecorder))
     }
   }
 

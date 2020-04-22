@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -33,7 +33,8 @@ object ElectionDataFastIO {
   private val currentCacheFormatVersion = 2
 
   def savePickled(data:ElectionData,file:java.io.File) {
-    file.getParentFile.mkdirs()
+    val parent = file.getParentFile
+    if (parent!=null) parent.mkdirs()
     savePickled(data,new FileWriter(file))
   }
   def savePickled(data:ElectionData,writer: java.io.Writer) {

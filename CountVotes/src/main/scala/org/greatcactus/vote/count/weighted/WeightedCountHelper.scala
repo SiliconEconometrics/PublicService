@@ -1,5 +1,5 @@
 /*
-    Copyright 2016-2018 Silicon Econometrics Pty. Ltd.
+    Copyright 2016-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@ package org.greatcactus.vote.count.weighted
 import org.greatcactus.vote.count._
 import org.greatcactus.vote.count.MainDataTypes._
 import org.greatcactus.vote.count.ballots.{DVote, ElectionData, ElectionDataFastIO}
-import org.greatcactus.vote.count.margin.{ElectionChanged, Margin, NormalElectionOutcome, Tampering}
+import org.greatcactus.vote.count.margin.{Margin, NormalElectionOutcome, Tampering}
 
 
 /**
@@ -308,7 +308,7 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
     newworker.run(None)
     for (SaveReportsForNewRunOfElection(baseDir:ReportSaver,saveReports:Boolean, saveDatafile:Boolean)<-reportLocation) {
       val dir = baseDir.subdir(name)
-      if (saveReports) ElectionReport.saveReports(dir,newworker.report,newdata)
+      if (saveReports) ElectionReport.saveReports(dir,newworker.report,newdata.meta)
       if (saveDatafile) dir.write(newdata.meta.electionName.shortFileName+".txt",w=>ElectionDataFastIO.savePickled(newdata,w))
     }
     val winners = newworker.report.electedCandidates.toList

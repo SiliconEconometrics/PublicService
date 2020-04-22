@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -228,9 +228,9 @@ class RunLotsOfContests(val year:Int) {
                        if (RunLotsOfContests.giveDetailedReportOnOneRun) {
                           val worker = new NSWElectionHelper(data,electedCandidates.length,new scala.util.Random,RunLotsOfContests.electionRules,ineligibleCandidates)
                           worker.run()
-                          ElectionReport.saveReports(new File("LGE"+year+"reports/"+prettyName+"/"),worker.report,data)
+                          ElectionReport.saveReports(new File("LGE"+year+"reports/"+prettyName+"/"),worker.report,data.meta)
                        }
-                       val output = new StatusOutput {
+                       val output = new StochasticStatusOutput {
                          def status(isFinished:Boolean,heading:String,margin:String,candidates:IndexedSeq[CandidateStat]) {
                            if (isFinished) {
                              val cr = new ContestResult(prettyName,electedCandidates,candidates)
