@@ -1,5 +1,5 @@
 /*
-    Copyright 2016-2019 Silicon Econometrics Pty. Ltd.
+    Copyright 2016-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -20,6 +20,13 @@ package org.greatcactus.vote.count.ballots
 
 import org.greatcactus.vote.count.ballots.GroupInformation.GroupID
 import org.greatcactus.vote.count.ballots.parsing.IterateOverRawBTLData
+
+trait ElectionCountRules {
+  val name:String
+  val usedIn:List[String]
+  val minATLmarksToBeValid : Int
+  val minBTLmarksToBeValid : Int
+}
 
 trait ElectionSpecification {
   def jurisdiction:String

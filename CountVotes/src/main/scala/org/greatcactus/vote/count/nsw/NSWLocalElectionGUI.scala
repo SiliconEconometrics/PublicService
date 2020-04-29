@@ -74,11 +74,11 @@ class NSWElectionGUIInfo {
   fileChooser.addActionListener(fileChooserAction)
   optionsPane.add(new JLabel("Number of candidates to elect"))
   val numToElectField = new JFormattedTextField
-  numToElectField.setValue(new Integer(3))
+  numToElectField.setValue(Integer.valueOf(3))
   numToElectField.setColumns(3)
   optionsPane.add(numToElectField)
   val numTimesToRun = new JFormattedTextField
-  numTimesToRun.setValue(new Integer(100))
+  numTimesToRun.setValue(Integer.valueOf(100))
   numTimesToRun.setColumns(5)
   optionsPane.add(new JLabel("Number of times to run the election"))
   optionsPane.add(numTimesToRun)

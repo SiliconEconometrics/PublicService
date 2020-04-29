@@ -21,9 +21,10 @@ package org.greatcactus.vote.count
 import java.io.File
 
 import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
-import org.greatcactus.vote.count.ballots.{ElectionData, ElectionDataFastIO, OCRError}
-import org.greatcactus.vote.count.federal.{FederalSenateCount, FederalSenateCountHelper}
+import org.greatcactus.vote.count.ballots.{ElectionCountRules, ElectionData, ElectionDataFastIO, OCRError}
+import org.greatcactus.vote.count.federal.{FederalSenateCount, FederalSenateCountHelper, FederalSentate2013Rules, FederalSentate2016Rules}
 import org.greatcactus.vote.count.margin.ElectionChanged
+import org.greatcactus.vote.count.vic.VictoriaSenate2014Rules
 
 import scala.util.Random
 
@@ -44,16 +45,21 @@ object MainApp extends App {
       | --doMarginOptimization     try to compute margins (very slow)
       | --modify file              specify a file of modifications to the votes
       | --ocrErr spec              run with simulated ocr errors. spec can be
-      |         Truncate:p  for all positions, truncate at position with probability p.
-      |         DigitError:p  for all digits, replaced with random digit (possibly self) with probability p
+      |         Truncate:pRange    for all positions, truncate at position with probability p.
+      |         DigitError:pRange  for all digits, replaced with random digit (possibly self) with probability p
       |         DigitTable:p00,p01,p02...p09,p10,p11...p99 replace digit i with j with probability pij
+      |           pRange may be a single probability, or a range like 0-1:0.001 meaning numbers between 0 and 1 by 0.001.
       | --numRuns n                specify number of times to rerun with simulated ocr modification errors. (default 1)
       | --numThreads n             specify number of threads to use when running multiple times. (default 1)
+      | --probFile <file>          write out a csv file containing a summary of the number of times candidates got elected in ocrErr scenarios.
+      | --ocrExampleDir            a directory into which to write a full distribution of preferences for the first ocr error example, will be appended by prob
       |  """.stripMargin) else try {
     var rules = "federal"
     var stvFile : Option[File] = None
     var modifyFile : Option[File] = None
     var outDir : Option[File] = None
+    var ocrExampleOutDir : Option[File] = None
+    var probFile : Option[File] = None
     var numSeats = 6
     var processedArgs = 0
     var numRuns = 1
@@ -65,7 +71,7 @@ object MainApp extends App {
     var finishSuplusDistributionEvenIfEveryoneWillGetElected = false
     var interruptExclusionAtStartOfExclusionIfAllWillBeElected = false
     var doMarginOptimization = false
-    var ocrError : Option[OCRError] = None
+    var ocrError : Seq[OCRError] = Nil
     def nextArg() : String = {
       if (processedArgs==args.length) throw new IllegalArgException("Missing final argument")
       val res = args(processedArgs)
@@ -83,6 +89,8 @@ object MainApp extends App {
       nextArg() match {
         case "--stv" => stvFile=Some(nextArgFile())
         case "--out" => outDir=Some(nextArgFile(false))
+        case "--ocrExampleDir" => ocrExampleOutDir=Some(nextArgFile(false))
+        case "--probFile" => probFile=Some(nextArgFile(false))
         case "--modify" => modifyFile=Some(nextArgFile())
         case "--rules" => rules=nextArg()
         case "--NumSeats" => numSeats=nextArgInt()
@@ -93,15 +101,23 @@ object MainApp extends App {
         case "--finishSuplusDistributionEvenIfEveryoneWillGetElected" => finishSuplusDistributionEvenIfEveryoneWillGetElected=true
         case "--interruptExclusionAtStartOfExclusionIfAllWillBeElected" => interruptExclusionAtStartOfExclusionIfAllWillBeElected=true
         case "--doMarginOptimization" => doMarginOptimization=true
-        case "--ocrErr" => ocrError = Some(OCRError(nextArg()))
+        case "--ocrErr" => ocrError = OCRError(nextArg())
         case "--numRuns" => numRuns=nextArgInt()
         case "--numThreads" => numThreads=nextArgInt()
         case unknown => throw new IllegalArgException("Unknown argument "+unknown)
       }
     }
     if (stvFile.isEmpty) throw new IllegalArgException("Need to specify vote data file.")
+    val cRules : ElectionCountRules = rules match {
+      case "federal" => FederalSentate2016Rules
+      case "Federal2016" => FederalSentate2016Rules
+      case "Federal2013" => FederalSentate2013Rules
+      case "vic" => VictoriaSenate2014Rules
+      case "Victoria2014" => VictoriaSenate2014Rules
+    }
+
     def count(data:ElectionData): List[CandidateIndex] = {
-      val winners = rules match {
+      val winners = rules match { // TODO make running depend on ElectionCountRules rather than a switch here and later on as well.
         case "federal" => FederalSenateCount.run(data, numSeats, ecOrder, Map.empty,None,exclude,outDir.map{new ReportSaverDirectory(_)},prohibitMultipleEliminations,finishExclusionEvenIfAllWillBeElected,finishSuplusDistributionEvenIfEveryoneWillGetElected,doMarginOptimization,interruptExclusionAtStartOfExclusionIfAllWillBeElected)
         case _ => throw new IllegalArgException("Don't understand rules : "+rules)
       }
@@ -115,13 +131,11 @@ object MainApp extends App {
       val change = ElectionChanged(normalWinners,newWinners)
       println("Change : "+change.descListWithGroups(data.meta))
     }
+    val multistats = new MultipleElectionStats("ocr")
     for (ocr<-ocrError) {
-      val minFormalATL = rules match {
-        case "federal" => 1  // 2016, 278 1(b)
-      }
-      val minFormalBTL = rules match {
-        case "federal" => 6  // 2016, 279 1(b)
-      }
+      println("\n\nRunning error rate "+ocr.parameter+"\n")
+      val minFormalATL = cRules.minATLmarksToBeValid
+      val minFormalBTL = cRules.minBTLmarksToBeValid
       val runner = new ProbabilisticRunner(None) {
         /** Do the actual probabilistic run, possibly concurrently with other runs */
         override def doOneRun(random: Random): ElectionResultReport = {
@@ -137,8 +151,10 @@ object MainApp extends App {
           }
         }
       }
-      runner.runProbabilisticly(data.meta,numRuns,numThreads,true,None)
+      val stats = runner.runProbabilisticly(data.meta,numRuns,numThreads,true,None,ocrExampleOutDir.map{f=>new File(f.getParent,f.getName+ocr.parameter)})
+      multistats.add(ocr.parameter,stats)
     }
+    for (f<-probFile) multistats.printTable(f)
   } catch {
     case e:IllegalArgException => println("Error in arguments : "+e.getMessage)
   }

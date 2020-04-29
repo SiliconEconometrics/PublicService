@@ -25,7 +25,7 @@ import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
 import org.greatcactus.vote.count.ballots.GroupInformation.{GroupID, GroupIndex}
 import org.greatcactus.vote.count.margin.Margin
 
-import scala.collection.mutable
+import scala.collection.{AbstractSeq, immutable, mutable}
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.io.Source
 import scala.reflect.ClassTag
@@ -213,20 +213,28 @@ sealed class ElectionData(
 
 object OCRError {
 
+  val RangeSpec = """([\d\.]+)-([\d\.]+)\:([\d\.]+)""".r
   /** Parse a string describing an OCR error. Possibilities are :
-    *    Truncate:p  for all positions, truncate at position with probability p.
-    *    DigitError:p  for all digits, replaced with random digit (possibly self) with probability p
+    *    Truncate:pRange  for all positions, truncate at position with probability p.
+    *    DigitError:pRange  for all digits, replaced with random digit (possibly self) with probability p
     *    DigitTable:p00,p01,p02...p09,p10,p11...p99 replace digit i with j with probability pij
+    *    pRange may be a single probability, or a range like 0-1:0.001 meaning numbers between 0 and 1 by 0.001.
     */
-  def apply(s:String): OCRError = {
+  def apply(s:String): Seq[OCRError] = {
     val firstColonIndex = s.indexOf(':')
     if (firstColonIndex== -1) throw new IllegalArgumentException("Bad OCRError description - expecting tag:probability(s)")
     else {
-      val remaining = s.substring(firstColonIndex+1).split(',').map{_.toDouble}
+      val remainingString = s.substring(firstColonIndex+1)
+      lazy val remainingRange: Seq[Double] = remainingString match {
+        case RangeSpec(start,end,step) => Range.BigDecimal.inclusive(BigDecimal(start),BigDecimal(end),BigDecimal(step)).map{_.toDouble}
+        case s => List(s.toDouble)
+      }
       s.substring(0,firstColonIndex) match {
-        case "Truncate" => if (remaining.length==1) new OCRErrorSimpleTruncation(remaining(0)) else throw new IllegalArgumentException("Bad OCRError description - expecting single probability after Truncate:")
-        case "DigitError" => if (remaining.length==1) new OCRErrorDigitSimpleError(remaining(0)) else throw new IllegalArgumentException("Bad OCRError description - expecting single probability after DigitError:")
-        case "DigitTable" => if (remaining.length==100) new OCRErrorDigitTable(Array.tabulate(10,10){(i:Int,j:Int)=>remaining(i*10+j)}) else throw new IllegalArgumentException("Bad OCRError description - expecting 100 colon separated probabilities after DigitTable:")
+        case "Truncate" => for (p<-remainingRange) yield new OCRErrorSimpleTruncation(p)
+        case "DigitError" => for (p<-remainingRange) yield new OCRErrorDigitSimpleError(p)
+        case "DigitTable" =>
+          val remaining = remainingString.split(',').map{_.toDouble}
+          if (remaining.length==100) List(new OCRErrorDigitTable(Array.tabulate(10,10){(i:Int,j:Int)=>remaining(i*10+j)})) else throw new IllegalArgumentException("Bad OCRError description - expecting 100 colon separated probabilities after DigitTable:")
         case other => throw new IllegalArgumentException("Bad OCRError description - unknown error type "+other)
       }
     }
@@ -235,6 +243,7 @@ object OCRError {
 
 abstract class OCRError {
   def change[Marktype : ClassTag](r:Random,numPossibilities:Int,marks:Array[Marktype],badMark:Marktype):  Array[Marktype]
+  def parameter:String
 }
 
 class OCRErrorSimpleTruncation(pTruncateAtGivenPoint:Double) extends OCRError {
@@ -246,6 +255,7 @@ class OCRErrorSimpleTruncation(pTruncateAtGivenPoint:Double) extends OCRError {
     }
     marks
   }
+  def parameter:String = pTruncateAtGivenPoint.toString
 }
 
 abstract class OCRErrorDigit extends OCRError {
@@ -271,6 +281,7 @@ abstract class OCRErrorDigit extends OCRError {
 
 class OCRErrorDigitSimpleError(pError:Double) extends OCRErrorDigit {
   override def errorDigit(r: Random, c: Char): Char = if (r.nextDouble()<pError) ('0'+r.nextInt(10)).toChar else c
+  def parameter:String = pError.toString
 }
 
 /** Contain an array of probabilities of errors, with the first index being the from digit, and the second being the to digit. There are 10 indices, for '0' to '9'. */
@@ -284,6 +295,7 @@ class OCRErrorDigitTable(pErrors:Array[Array[Double]]) extends OCRErrorDigit {
       ('0'+cum.indexWhere(_ < d)).toChar
     } else c
   }
+  def parameter:String = pErrors.map{_.mkString(",")}.mkString(",")
 }
 
 class ElectionDataSimpleStatistics(val numSATLs:Int,val numRATLs:Int,val numBTLs:Int,val uniqueRATLs:Int,val uniqueBTLs:Int,val formalVotes:Int,val informalVotes:Int,val numCandidates:Int,val usesGroupVotingTickets:Boolean,val downloadLocation:Array[String])

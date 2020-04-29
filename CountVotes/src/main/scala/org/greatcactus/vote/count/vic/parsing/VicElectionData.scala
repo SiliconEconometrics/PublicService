@@ -20,6 +20,7 @@ package org.greatcactus.vote.count.vic.parsing
 import java.io.File
 
 import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
+import org.greatcactus.vote.count.ballots.GroupInformation.GroupID
 import org.greatcactus.vote.count.ballots._
 import org.greatcactus.vote.count.ballots.parsing._
 
@@ -32,18 +33,37 @@ object TestVicData extends App {
   Vic2014Data.load(region).printStatus()
 }
 
-object Vic2014Data extends VicElectionDataLoader("2014") {
-  val regions = Array("Eastern Metropolitan","Eastern Victoria","Northern Metropolitan","Northern Victoria","South-Eastern Metropolitan","Southern Metropolitan","Western Metropolitan","Western Victoria")
+class VicElectionSpec(override val region:String, val loader:VicElectionDataLoader) extends ElectionSpecification {
+  override def jurisdiction: String = "Victoria"
+  override def year: String = loader.year
+  override def metadataAvailable: Boolean = true
+  override def dataAvailable: Boolean = loader.dataAvailable(region)
+  override def iterateOverRawBTLDataAvailable: Boolean = true
+  override def metadata: ElectionMetadata = if (dataAvailable) loader.loadJustMetadata(region) else loader.loadRawMetadata(region)
+  override def data: ElectionData = loader.load(region)
+  override def getIterateOverRawBTLData: IterateOverRawBTLData = loader.iterator(region,metadata)
+  override def ticketRoundingChoicesMade: Map[GroupID, CandidateIndex] = Map.empty
+  override def numToBeElected: CandidateIndex = 5
 }
 
-class VicElectionDataLoader(val year:String) extends CachedElectionDataLoader("VIC/State"+year) {
+object Vic2014Data extends VicElectionDataLoader("2014") {
+
+}
+
+class VicElectionDataLoader(val year:String) extends CachedElectionDataLoader("VIC/State"+year) with SetOfConcurrentElectionsSpecification {
+  val regions: Array[String] = Array("Eastern Metropolitan","Eastern Victoria","Northern Metropolitan","Northern Victoria","South-Eastern Metropolitan","Southern Metropolitan","Western Metropolitan","Western Victoria")
+  def dataAvailable(state: String): Boolean = true
+  override def jurisdiction:String = "Victoria"
+  def availableRegions:Seq[String] = regions
+  def getSpec(region:String) : ElectionSpecification = new VicElectionSpec(region,this)
 
   def paperDetails(region:String): File = rel("Ballot Paper Details - "+region+" Region.csv")
   def distPrefs(region:String): File = rel(region+" Distribution of Preferences Report.csv")
 
   def getCandidateNames(region:String) : Array[String] = CSVHelper(distPrefs(region),11).readSingleLine().drop(4).dropRight(4).filter(_.nonEmpty)
 
-  def processPrefs(prefsfile: CSVHelper, helper: VoteInterpreter): Unit = {
+  def processPrefs(region:String, helper: VoteInterpreter): Unit = {
+    val prefsfile = CSVHelper(paperDetails(region),11)
     for (line<-prefsfile) {
       val c0 = line(0)
       if (line.forall(_.isEmpty) || c0.startsWith("Batch No.") || c0=="Ballot Paper Preferences Recorded Against Candidates in Ballot Paper Order" ||c0=="Informal batch - no ballot papers") {} // do nothing with blank line
@@ -57,14 +77,40 @@ class VicElectionDataLoader(val year:String) extends CachedElectionDataLoader("V
     }
   }
 
+  def iterator(region:String,metadata : ElectionMetadata) : IterateOverRawBTLData = new IterateOverRawBTLData {
+    override def meta : ElectionMetadata = metadata
+    var rowsSoFar : Int = 0
+    private var batchNumber : String = _
+    private var paperNumber : String = _
+
+    def foreach(f:Array[String]=>Unit) {
+      rowsSoFar = 0
+      val prefsfile = CSVHelper(paperDetails(region),11)
+      for (line<-prefsfile) {
+        val c0 = line(0)
+        if (c0.startsWith("Batch No.")) batchNumber=c0.substring(9).trim
+        if (line.forall(_.isEmpty) ||  c0=="Ballot Paper Preferences Recorded Against Candidates in Ballot Paper Order" ||c0=="Informal batch - no ballot papers") {} // do nothing with blank line
+        else if (c0.forall(_.isDigit)) {
+          paperNumber = c0
+          f(line.tail)
+          rowsSoFar+=1
+        } else {
+          println("Could not understand line "+line.mkString(","))
+        }
+      }
+    }
+
+    override def currentRowMetadata: Map[String, String] = Map("Batch"->batchNumber,"Paper"->paperNumber)
+  }
   override def loadRaw(region:String) : ElectionData = {
     val candidates = for (n<-getCandidateNames(region)) yield new Candidate(n,"",0)
     val helper = new VoteInterpreter(Array(),candidates.length)
-    val prefsfile = CSVHelper(paperDetails(region),11)
-    processPrefs(prefsfile,helper)
+
+    processPrefs(region,helper)
     val name = new ElectionName(year,"VEC","Victorian State",region)
     helper.getData(candidates,name,Array())
   }
+  def loadRawMetadata(state:String) : ElectionMetadata = throw new IllegalArgumentException("Not implemented")
 }
 
 
@@ -145,3 +191,14 @@ object Vic2014OfficialResults {
 
 class VicWholeCount(val candidates : Array[String],val numFormalVotes:Int,val vacancies:Int,val quota:Int,val counts:Array[VicSingleCount])
 class VicSingleCount(val countName:String,val who:String,val what:String,val transferValue:Double,val fromCounts:Array[String],val papersDelta:Array[Int],val votesDelta:Array[Int],val votesCum:Array[Int],val electedCandidates:Array[CandidateIndex])
+
+
+object FederalJurisdictionSpecification extends ElectionJurisdictionSpecification {
+  override def jurisdiction: String = "Victoria"
+  override def availableYears: Seq[String] = List("2014")
+
+  override def getSpec(year: String): SetOfConcurrentElectionsSpecification = year match {
+    case "2014" => Vic2014Data
+  }
+}
+

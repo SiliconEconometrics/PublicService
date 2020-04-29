@@ -21,6 +21,7 @@ package org.greatcactus.vote.count.vic
 import java.io.File
 
 import org.greatcactus.vote.count.ElectionReport
+import org.greatcactus.vote.count.ballots.ElectionCountRules
 import org.greatcactus.vote.count.vic.parsing.Vic2014Data
 
 object RunVicElection extends App {
@@ -37,4 +38,11 @@ object RunVicElection extends App {
     ElectionReport.saveReports(new File(reportDir,data.meta.electionName.electorate),worker.report,data.meta)
   }
   
+}
+
+object VictoriaSenate2014Rules extends ElectionCountRules {
+  override val name: String = "Victoria2014"
+  override val usedIn: List[String] = List("Victoria 2014")
+  override val minATLmarksToBeValid: Int = 0 // NA
+  override val minBTLmarksToBeValid: Int = 5
 }

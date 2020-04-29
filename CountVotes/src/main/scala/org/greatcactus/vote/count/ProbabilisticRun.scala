@@ -18,10 +18,13 @@
 
 package org.greatcactus.vote.count
 
-import java.io.File
+import java.io.{File, FileWriter, PrintWriter}
+import java.util.concurrent.atomic.AtomicBoolean
 
+import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
 import org.greatcactus.vote.count.ballots.{Candidate, ElectionData, ElectionMetadata}
 
+import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 
 
@@ -52,7 +55,7 @@ class CandidateStat(val name:String,val proportionWon:Double,val meanPosition:Do
   }
 }
 /** Keep track of multiple non-deterministic runs of the election */
-class ElectionStats(candidates:Array[Candidate],printProgress:Boolean,output:Option[StochasticStatusOutput]) {
+class ElectionStats(val candidates:Array[Candidate],printProgress:Boolean,output:Option[StochasticStatusOutput]) {
   val numCandidates: Int = candidates.length
   val numTimesCandidateWon: Array[Int] = new Array[Int](numCandidates)
   val sumOfPositions: Array[Int] = new Array[Int](numCandidates)
@@ -99,8 +102,33 @@ class ElectionStats(candidates:Array[Candidate],printProgress:Boolean,output:Opt
       }
     }
   }
-
 }
+
+/** If the randomization is parameterizable, build a table as a function of the parameter. */
+class MultipleElectionStats(parameterName:String) {
+  private val table = new ArrayBuffer[(String,ElectionStats)]
+  def add(parameter:String,results:ElectionStats): Unit = table+=((parameter,results))
+  def printTable(pw:PrintWriter): Unit = if (table.nonEmpty) {
+    val candidates = table.head._2.candidates
+    val candidatesWinningAtLeastOnce : Seq[CandidateIndex] = candidates.indices.filter(i=>table.exists{case (_,stats) => stats.numTimesCandidateWon(i)>0})
+    // print headings
+    pw.print(parameterName);
+    for (i<-candidatesWinningAtLeastOnce) { pw.print(',');pw.print('"'); pw.print(candidates(i).name);pw.print('"')}
+    pw.println()
+    // print data lines
+    for ((parameter,stats)<-table) {
+      pw.print(parameter);
+      for (i<-candidatesWinningAtLeastOnce) { pw.print(','); pw.print(stats.numTimesCandidateWon(i))}
+      pw.println()
+    }
+  }
+  def printTable(f:File): Unit = {
+    val pw = new PrintWriter(new FileWriter(f))
+    printTable(pw)
+    pw.close()
+  }
+}
+
 
 abstract class ProbabilisticRunner(reportLocations:Option[StochasticReportOptions]) {
 
@@ -118,9 +146,11 @@ abstract class ProbabilisticRunner(reportLocations:Option[StochasticReportOption
 
   val stochasticReports = new collection.mutable.HashMap[String,ElectionResultReport] // only used if reportLocations.isDefined
 
-  def runProbabilisticly(metadata:ElectionMetadata,numTotalRuns:Int,numThreads:Int,printProgress:Boolean,output:Option[StochasticStatusOutput]) {
+  def runProbabilisticly(metadata:ElectionMetadata,numTotalRuns:Int,numThreads:Int,printProgress:Boolean,output:Option[StochasticStatusOutput],storeExample:Option[File]=None)  : ElectionStats = {
     // if (output.isEmpty) votedata.printStatus()
     stochasticReports.clear()
+
+    var needToWriteReport : AtomicBoolean = new AtomicBoolean(storeExample.isDefined)
 
     val cumulativeStats = new ElectionStats(metadata.candidates,printProgress,output)
 
@@ -128,6 +158,7 @@ abstract class ProbabilisticRunner(reportLocations:Option[StochasticReportOption
       val report = doOneRun(random)
       cumulativeStats.addElected(report.electedCandidates,report.lastMargin)
       addStochiasticReports(report)
+      if (needToWriteReport.getAndSet(false)) ElectionReport.saveReports(storeExample.get,report,metadata)
     }
 
     def runMultiple(numRunsPerThread:Int) {
@@ -169,5 +200,7 @@ abstract class ProbabilisticRunner(reportLocations:Option[StochasticReportOption
         }
       case None => // do nothing
     }
+
+    cumulativeStats
   }
 }

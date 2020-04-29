@@ -21,7 +21,7 @@ package org.greatcactus.vote.count.federal
 import org.greatcactus.vote.count._
 import org.greatcactus.vote.count.weighted._
 import org.greatcactus.vote.count.MainDataTypes._
-import org.greatcactus.vote.count.ballots.{DVote, ElectionData}
+import org.greatcactus.vote.count.ballots.{DVote, ElectionCountRules, ElectionData}
 import org.greatcactus.vote.count.federal.parsing.{FederalElectionDataLoader2013, FederalElectionDataLoader2016, FederalElectionDataLoader2019}
 
 
@@ -84,6 +84,19 @@ object FederalSenateCount2019App extends App {
   run("SA",6,DeducedAEC2019Orders.sa)
 }
 
+object FederalSentate2016Rules extends ElectionCountRules {
+  override val name: String = "Federal2016"
+  override val usedIn: List[String] = List("Federal 2016","Federal 2019")
+  override val minATLmarksToBeValid: Int = 1 // 2016, 278 1(b)
+  override val minBTLmarksToBeValid: Int = 6 // 2016, 279 1(b)
+}
+
+object FederalSentate2013Rules extends ElectionCountRules {
+  override val name: String = "Federal2013"
+  override val usedIn: List[String] = List("Federal 2016","Federal 2019")
+  override val minATLmarksToBeValid: Int = 0 // NA
+  override val minBTLmarksToBeValid: Int = 2 // Act No 26, 2013, 270(1), although this is a massive oversimplification
+}
 
 //tiebreaking orders, deduced from tie resolutions in actual AEC count.
 //The first one is the one who is treated as if they have a higher tally. 
