@@ -53,6 +53,7 @@ object MainApp extends App {
       | --numThreads n             specify number of threads to use when running multiple times. (default 1)
       | --probFile <file>          write out a csv file containing a summary of the number of times candidates got elected in ocrErr scenarios.
       | --ocrExampleDir            a directory into which to write a full distribution of preferences for the first ocr error example, will be appended by prob
+      | --ocrStatsDir              a directory into which to write statistics for the ocr simulation, will be appended by prob
       |  """.stripMargin) else try {
     var rules = "federal"
     var stvFile : Option[File] = None
@@ -60,6 +61,7 @@ object MainApp extends App {
     var outDir : Option[File] = None
     var ocrExampleOutDir : Option[File] = None
     var probFile : Option[File] = None
+    var ocrStatsDir : Option[File] = None
     var numSeats = 6
     var processedArgs = 0
     var numRuns = 1
@@ -90,6 +92,7 @@ object MainApp extends App {
         case "--stv" => stvFile=Some(nextArgFile())
         case "--out" => outDir=Some(nextArgFile(false))
         case "--ocrExampleDir" => ocrExampleOutDir=Some(nextArgFile(false))
+        case "--ocrStatsDir" => ocrStatsDir=Some(nextArgFile(false))
         case "--probFile" => probFile=Some(nextArgFile(false))
         case "--modify" => modifyFile=Some(nextArgFile())
         case "--rules" => rules=nextArg()
@@ -133,13 +136,24 @@ object MainApp extends App {
     }
     val multistats = new MultipleElectionStats("ocr")
     for (ocr<-ocrError) {
+      val makeDataLock = new Object
+      val internalStats : Option[OCRStats] = for (statsDir<-ocrStatsDir) yield new OCRStats(new File(statsDir.getParent,statsDir.getName+" "+ocr.parameter),numRuns,ocr.parameter)
       println("\n\nRunning error rate "+ocr.parameter+"\n")
       val minFormalATL = cRules.minATLmarksToBeValid
       val minFormalBTL = cRules.minBTLmarksToBeValid
       val runner = new ProbabilisticRunner(None) {
         /** Do the actual probabilistic run, possibly concurrently with other runs */
         override def doOneRun(random: Random): ElectionResultReport = {
-          val newdata = data.simulateOCRerror(random,ocr,minFormalATL,minFormalBTL)
+          def makeData() = data.simulateOCRerror(random,ocr,minFormalATL,minFormalBTL,internalStats)
+          val newdata = internalStats match {
+            case Some(s) =>
+              makeDataLock.synchronized{// need to present the stats data in a serialised way.
+                val res =  makeData()
+                s.endElection()
+                res
+              }
+            case None => makeData() // no need to do in a thread serialized manner.
+          }
           //ElectionDataFastIO.savePickled(newdata,new File("test.stl"))
           //newdata.printStatus()
           rules match {
@@ -153,6 +167,7 @@ object MainApp extends App {
       }
       val stats = runner.runProbabilisticly(data.meta,numRuns,numThreads,true,None,ocrExampleOutDir.map{f=>new File(f.getParent,f.getName+ocr.parameter)})
       multistats.add(ocr.parameter,stats)
+      for (s<-internalStats) s.close()
     }
     for (f<-probFile) multistats.printTable(f)
   } catch {

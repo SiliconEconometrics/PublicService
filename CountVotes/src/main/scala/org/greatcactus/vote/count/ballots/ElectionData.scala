@@ -22,6 +22,7 @@ import java.io.File
 import java.util
 
 import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
+import org.greatcactus.vote.count.{OCRStats, OCRVoteStatistic}
 import org.greatcactus.vote.count.ballots.GroupInformation.{GroupID, GroupIndex}
 import org.greatcactus.vote.count.margin.Margin
 
@@ -182,15 +183,17 @@ sealed class ElectionData(
   }
 
   /** Simulate an error rate in OCR reading to get new data */
-  def simulateOCRerror(r:Random,errorSource:OCRError,minFormalATL:Int,minFormatBTL:Int) : ElectionData = {
+  def simulateOCRerror(r:Random,errorSource:OCRError,minFormalATL:Int,minFormatBTL:Int,stats:Option[OCRStats]) : ElectionData = {
     val newSATL = satls
     val newRATLS = new ArrayBuffer[ATL]()
+    def hadVote(atl:Boolean,validPrefs:Int,hasError:Boolean) : Unit = for (s<-stats) s.add(new OCRVoteStatistic(atl,validPrefs,hasError))
     for (b<-ratls) {
       var numUnchanged = 0
       for (_<-0 until b.n) {
         val marks = errorSource.change(r,numCandidates,b.groups, null)
-        if (b.groups.toList==marks.toList) numUnchanged+=1
-        else if (marks.length>=minFormalATL) newRATLS+=new ATL(marks,1)
+        if (b.groups.toList==marks.toList) { numUnchanged+=1; hadVote(true,marks.length,false) }
+        else if (marks.length>=minFormalATL) { newRATLS+=new ATL(marks,1); hadVote(true,marks.length,true) }
+        else hadVote(true,0,true)
       }
       if (numUnchanged==b.n) newRATLS+=b
       else if (numUnchanged>0) newRATLS+=b.subset(numUnchanged)
@@ -200,8 +203,9 @@ sealed class ElectionData(
       var numUnchanged = 0
       for (_<-0 until b.n) {
         val marks = errorSource.change(r,numCandidates,b.candidates, -1)
-        if (util.Arrays.equals(b.candidates,marks)) numUnchanged+=1
-        else if (marks.length>=minFormatBTL) newBTL+=new BTL(marks,1)
+        if (util.Arrays.equals(b.candidates,marks)) { numUnchanged+=1; hadVote(false,marks.length,false) }
+        else if (marks.length>=minFormatBTL) { newBTL+=new BTL(marks,1); hadVote(false,marks.length,true) }
+        else hadVote(false,0,true)
       }
       if (numUnchanged==b.n) newBTL+=b
       else if (numUnchanged>0) newBTL+=b.subset(numUnchanged)
