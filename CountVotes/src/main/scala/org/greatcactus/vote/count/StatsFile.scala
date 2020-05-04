@@ -82,16 +82,18 @@ class OCRPerBallotData() {
   private val isATL = new MeanTrackerWidthFirst("1 is ATL")
   private val meanNumPrefs = new MeanTrackerWidthFirst("Mean num valid prefs")
   private val numTimesHaveError = new MeanTrackerWidthFirst("Num times have error")
+  private val numTimesFormal = new MeanTrackerWidthFirst("Num times formal")
 
   def add(stat:OCRVoteStatistic) : Unit = {
     isATL.add(if (stat.atl) 1 else 0)
     meanNumPrefs.add(stat.validPrefs)
     numTimesHaveError.add(if (stat.hasError) 1 else 0)
+    numTimesFormal.add(if (stat.validPrefs>0) 1 else 0)
   }
-  def endElection(): Unit = { isATL.startSet(); meanNumPrefs.startSet(); numTimesHaveError.startSet() }
+  def endElection(): Unit = { isATL.startSet(); meanNumPrefs.startSet(); numTimesHaveError.startSet(); numTimesFormal.startSet() }
   def length = meanNumPrefs.length
-  def data(n:Int) : Array[String] = Array(isATL.tracker(n).mean.toInt.toString,meanNumPrefs.tracker(n).mean.toString,numTimesHaveError.tracker(n).total.toInt.toString)
-  def headings : Array[String] = Array(isATL.name,meanNumPrefs.name,numTimesHaveError.name)
+  def data(n:Int) : Array[String] = Array(isATL.tracker(n).mean.toInt.toString,meanNumPrefs.tracker(n).mean.toString,numTimesHaveError.tracker(n).total.toInt.toString,numTimesFormal.tracker(n).total.toInt.toString)
+  def headings : Array[String] = Array(isATL.name,meanNumPrefs.name,numTimesHaveError.name,numTimesFormal.name)
 }
 
 class OCRStats(dir:File,numElections:Int,errRate:String) {
