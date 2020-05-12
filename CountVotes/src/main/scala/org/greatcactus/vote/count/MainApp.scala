@@ -53,7 +53,7 @@ object MainApp extends App {
       | --numThreads n             specify number of threads to use when running multiple times. (default 1)
       | --probFile <file>          write out a csv file containing a summary of the number of times candidates got elected in ocrErr scenarios.
       | --ocrExampleDir            a directory into which to write a full distribution of preferences for the first ocr error example, will be appended by prob
-      | --ocrStatsDir              a directory into which to write statistics for the ocr simulation, will be appended by prob
+      | --ocrStatsDir              a directory into which to write statistics for the ocr simulation, will be appended by prob if not too long
       |  """.stripMargin) else try {
     var rules = "federal"
     var stvFile : Option[File] = None
@@ -137,7 +137,7 @@ object MainApp extends App {
     val multistats = new MultipleElectionStats("ocr")
     for (ocr<-ocrError) {
       val makeDataLock = new Object
-      val internalStats : Option[OCRStats] = for (statsDir<-ocrStatsDir) yield new OCRStats(new File(statsDir.getParent,statsDir.getName+" "+ocr.parameter),numRuns,ocr.parameter)
+      val internalStats : Option[OCRStats] = for (statsDir<-ocrStatsDir) yield new OCRStats(if (ocr.parameter.length<100) new File(statsDir.getParent,statsDir.getName+" "+ocr.parameter) else statsDir,numRuns,ocr.parameter)
       println("\n\nRunning error rate "+ocr.parameter+"\n")
       val minFormalATL = cRules.minATLmarksToBeValid
       val minFormalBTL = cRules.minBTLmarksToBeValid

@@ -270,7 +270,7 @@ abstract class OCRErrorDigit extends OCRError {
     var doubleMarkIndex = numPossibilities
     for (preference<-marks.indices) {
       val errorPreference = error(r,preference+1)-1
-      //println("Converted "+(preference+1)+" to "+(errorPreference+1))
+      // println("Converted "+(preference+1)+" to "+(errorPreference+1))
       if (errorPreference<byPref.length && errorPreference>=0) {
         if (byPref(errorPreference)==badMark) byPref(errorPreference)=marks(preference)
         else if (errorPreference<doubleMarkIndex) doubleMarkIndex=errorPreference
@@ -278,7 +278,7 @@ abstract class OCRErrorDigit extends OCRError {
     }
     val valid = byPref.indexOf(badMark)
     val result = if (valid== -1) byPref else byPref.slice(0,valid min doubleMarkIndex)
-    //println("Changed "+marks.mkString(",")+" to "+result.mkString(","))
+    // println("Changed "+marks.mkString(",")+" to "+result.mkString(","))
     result
   }
 }
@@ -296,7 +296,7 @@ class OCRErrorDigitTable(pErrors:Array[Array[Double]]) extends OCRErrorDigit {
     val d = r.nextDouble()
     val cum = cumulativeSums(c-'0')
     if (d<cum.last) {
-      ('0'+cum.indexWhere(_ < d)).toChar
+      ('0'+cum.indexWhere(d < _ )).toChar
     } else c
   }
   def parameter:String = pErrors.map{_.mkString(",")}.mkString(",")
