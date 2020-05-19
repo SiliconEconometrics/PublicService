@@ -42,9 +42,9 @@ object FederalSenateCount2013App extends App {
 
 object FederalSenateCount2016App extends App {
 
-  val doMarginOptimization = true
+  val doMarginOptimization = false
   def run(state:String,toBeElected:Int,aecDeemedOrder:Seq[Int],doHalf:Boolean=true,ineligible:Set[Int]=Set.empty): Unit = {
-    val data = FederalElectionDataLoader2016.load(state)
+    val data = FederalElectionDataLoader2016.load(state)// .dropPreferencesBeyond(6)
     FederalSenateCount.run(data,  toBeElected, aecDeemedOrder, Map.empty, if (doHalf) Some(toBeElected/2) else None,ineligible,None,prohibitMultipleEliminations = true,finishExclusionEvenIfAllWillBeElected = true,finishSuplusDistributionEvenIfEveryoneWillGetElected = true,interruptExclusionAtStartOfExclusionIfAllWillBeElected = true,doMarginOptimization=doMarginOptimization)
   }
   

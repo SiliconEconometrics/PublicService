@@ -63,6 +63,7 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
   report.initialCountDone()
   
   def declareElected(c:CandidateIndex,reason:String) {
+        println("Elected "+c+" because "+reason)
         continuingCandidates-=c
         if (tallys(c)>quota) candidatesToHaveSurplusDistributed.enqueue(c)
         remainingVacancies-=1
@@ -198,7 +199,7 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
     }
     if (orderedWork.isEmpty) {
       report.declareCandidatesExcluded(candidates,Nil,0)
-      endCountReorderAndCheckElected(true)
+      endCountReorderAndCheckElected(false)
     }
     report.finishMajorCount()
   }
@@ -233,6 +234,7 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
   }
     
   def distributeOrExclude() {
+    //println("remaining vacancies : "+remainingVacancies+" candidates available : "+continuingCandidates.orderedList.mkString(","))
     if (candidatesToHaveSurplusDistributed.isEmpty) {
       val toExclude = candidatesForExclusion
       if (wantToComputeMargins) {

@@ -212,6 +212,11 @@ sealed class ElectionData(
     }
     new ElectionData(meta,newSATL,newRATLS.toArray,newBTL.toArray,numInformal)
   }
+
+  /** Ignore preferences after a certain one. Used to see how important having long preferences are. */
+  def dropPreferencesBeyond(lastKeptPreference:Int) : ElectionData = {
+    new ElectionData(meta,satls,ratls.map{_.dropPreferencesBeyond(lastKeptPreference)},btls.map{_.dropPreferencesBeyond(lastKeptPreference)},numInformal)
+  }
   val getSimpleStatistics = new ElectionDataSimpleStatistics(numSATLs,numRATLs,numBTLs,ratls.length,btls.length,totalFormalVotes,numInformal,candidates.length,usesGroupVotingTickets,meta.downloadLocation)
 }
 
@@ -333,6 +338,7 @@ sealed class ATL(/** groups listed in preference order */ val groups:Array[Group
   override def isATL: Boolean = true
   override def n: Int = numVoters
   override def subset(n:Int) : ATL = new ATL(groups,n)
+  def dropPreferencesBeyond(lastKeptPreference:Int) : ATL = new ATL(groups.take(lastKeptPreference),numVoters)
   override def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate) : ATL = { // assume destination is top of chart.
     new ATL(groups.map{c => if (c==candidateFrom.group) candidateTo.group else if (c==candidateTo.group) candidateFrom.group else c},numVoters)
   }
@@ -344,6 +350,7 @@ sealed class BTL(/** candidate ids listed in preference order */ val candidates:
   override def isATL: Boolean = false
   override def n: Int = numVoters
   override def subset(n:Int) : BTL = new BTL(candidates,n)
+  def dropPreferencesBeyond(lastKeptPreference:Int) : BTL = new BTL(candidates.take(lastKeptPreference),numVoters)
   override def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate): BTL = new BTL(candidates.map{c => if (c==fromWho) toWho else if (c==toWho) fromWho else c},numVoters)
   def toVote : Vote = new Vote(candidates,numVoters,this)
 }
