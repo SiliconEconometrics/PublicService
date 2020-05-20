@@ -63,7 +63,7 @@ abstract class WeightedCountHelper(val data:ElectionData,candidatesToBeElected:I
   report.initialCountDone()
   
   def declareElected(c:CandidateIndex,reason:String) {
-        println("Elected "+c+" because "+reason)
+        // println("Elected "+c+" because "+reason)
         continuingCandidates-=c
         if (tallys(c)>quota) candidatesToHaveSurplusDistributed.enqueue(c)
         remainingVacancies-=1

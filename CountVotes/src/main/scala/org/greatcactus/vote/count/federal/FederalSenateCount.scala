@@ -84,14 +84,14 @@ object FederalSenateCount2019App extends App {
   run("SA",6,DeducedAEC2019Orders.sa)
 }
 
-object FederalSentate2016Rules extends ElectionCountRules {
+object FederalSenate2016Rules extends ElectionCountRules {
   override val name: String = "Federal2016"
   override val usedIn: List[String] = List("Federal 2016","Federal 2019")
   override val minATLmarksToBeValid: Int = 1 // 2016, 278 1(b)
   override val minBTLmarksToBeValid: Int = 6 // 2016, 279 1(b)
 }
 
-object FederalSentate2013Rules extends ElectionCountRules {
+object FederalSenate2013Rules extends ElectionCountRules {
   override val name: String = "Federal2013"
   override val usedIn: List[String] = List("Federal 2016","Federal 2019")
   override val minATLmarksToBeValid: Int = 0 // NA

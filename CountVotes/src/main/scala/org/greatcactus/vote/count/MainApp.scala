@@ -22,7 +22,7 @@ import java.io.File
 
 import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
 import org.greatcactus.vote.count.ballots.{ElectionCountRules, ElectionData, ElectionDataFastIO, OCRError}
-import org.greatcactus.vote.count.federal.{FederalSenateCount, FederalSenateCountHelper, FederalSentate2013Rules, FederalSentate2016Rules}
+import org.greatcactus.vote.count.federal.{FederalSenateCount, FederalSenateCountHelper, FederalSenate2013Rules, FederalSenate2016Rules}
 import org.greatcactus.vote.count.margin.ElectionChanged
 import org.greatcactus.vote.count.vic.VictoriaSenate2014Rules
 
@@ -52,10 +52,14 @@ object MainApp extends App {
       | --numRuns n                specify number of times to rerun with simulated ocr modification errors. (default 1)
       | --numThreads n             specify number of threads to use when running multiple times. (default 1)
       | --probFile <file>          write out a csv file containing a summary of the number of times candidates got elected in ocrErr scenarios.
+      | --ocrMinFormalBTL n        The minimum number of unique consecutive preferences starting from 1 for a formal BTL vote (default rules dependent, 6 for federal)
+      | --ocrMinFormalATL n        The minimum number of unique consecutive preferences starting from 1 for a formal ATL vote (default rules dependent, 1 for federal)
       | --ocrExampleDir            a directory into which to write a full distribution of preferences for the first ocr error example, will be appended by prob
       | --ocrStatsDir              a directory into which to write statistics for the ocr simulation, will be appended by prob if not too long
       |  """.stripMargin) else try {
     var rules = "federal"
+    var overrideMinFormalBTL : Option[Int] = None
+    var overrideMinFormalATL : Option[Int] = None
     var stvFile : Option[File] = None
     var modifyFile : Option[File] = None
     var outDir : Option[File] = None
@@ -107,14 +111,16 @@ object MainApp extends App {
         case "--ocrErr" => ocrError = OCRError(nextArg())
         case "--numRuns" => numRuns=nextArgInt()
         case "--numThreads" => numThreads=nextArgInt()
+        case "--ocrMinFormalBTL" => overrideMinFormalBTL=Some(nextArgInt())
+        case "--ocrMinFormalATL" => overrideMinFormalATL=Some(nextArgInt())
         case unknown => throw new IllegalArgException("Unknown argument "+unknown)
       }
     }
     if (stvFile.isEmpty) throw new IllegalArgException("Need to specify vote data file.")
     val cRules : ElectionCountRules = rules match {
-      case "federal" => FederalSentate2016Rules
-      case "Federal2016" => FederalSentate2016Rules
-      case "Federal2013" => FederalSentate2013Rules
+      case "federal" => FederalSenate2016Rules
+      case "Federal2016" => FederalSenate2016Rules
+      case "Federal2013" => FederalSenate2013Rules
       case "vic" => VictoriaSenate2014Rules
       case "Victoria2014" => VictoriaSenate2014Rules
     }
@@ -139,8 +145,8 @@ object MainApp extends App {
       val makeDataLock = new Object
       val internalStats : Option[OCRStats] = for (statsDir<-ocrStatsDir) yield new OCRStats(if (ocr.parameter.length<100) new File(statsDir.getParent,statsDir.getName+" "+ocr.parameter) else statsDir,numRuns,ocr.parameter)
       println("\n\nRunning error rate "+ocr.parameter+"\n")
-      val minFormalATL = cRules.minATLmarksToBeValid
-      val minFormalBTL = cRules.minBTLmarksToBeValid
+      val minFormalATL = overrideMinFormalATL.getOrElse(cRules.minATLmarksToBeValid)
+      val minFormalBTL = overrideMinFormalBTL.getOrElse(cRules.minBTLmarksToBeValid)
       val runner = new ProbabilisticRunner(None) {
         /** Do the actual probabilistic run, possibly concurrently with other runs */
         override def doOneRun(random: Random): ElectionResultReport = {
