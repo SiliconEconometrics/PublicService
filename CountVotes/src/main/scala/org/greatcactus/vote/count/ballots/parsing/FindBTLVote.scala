@@ -18,6 +18,7 @@
 
 package org.greatcactus.vote.count.ballots.parsing
 
+
 // Test at http://192.168.2.20:8095/tools/federal/2016/TAS/PrepareVote.html
 // with (the first listed vote from AEC) 9,10,21,22,23,24,25,26,54,55,56,7,8,19,20,1,2,3,4,5,6,51,52,53,49,50,47,48,57,58,29,30,13,14,44,45,46,33,34,42,43,11,12,31,32,27,28,15,16,17,18,35,36,37,38,39,40,41
 object FindBTLVote {

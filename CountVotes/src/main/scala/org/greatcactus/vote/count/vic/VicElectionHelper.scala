@@ -1,5 +1,5 @@
 /*
-    Copyright 2017-2019 Silicon Econometrics Pty. Ltd.
+    Copyright 2017-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -20,7 +20,6 @@
 package org.greatcactus.vote.count.vic
 
 import org.greatcactus.vote.count.MainDataTypes._
-import org.greatcactus.vote.count._
 import org.greatcactus.vote.count.ballots.ElectionData
 import org.greatcactus.vote.count.weighted._
 
@@ -53,7 +52,7 @@ class VicElectionHelper(data:ElectionData, candidatesToBeElected:Int, ticketRoun
   override def sortedForExclusion(votes:WeightedVotes): List[((TransferValue, CountNumber), PlainVotes)] = {
     val expected = votes.sortedByWeightThenCountNumber
     if (forceUselessFirstPreferenceDistributionIfNonePresent && (expected.isEmpty || expected.head._1._2 != 1) )
-        ((1.0,1),new PlainVotes)::expected
+        ((TransferValueOne,1),new PlainVotes)::expected
     else expected
   }
   override def finishExclusionEvenIfAllVacanciesFilled : Boolean = false

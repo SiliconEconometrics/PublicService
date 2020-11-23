@@ -17,7 +17,6 @@
  */
 
 package org.greatcactus.vote.count.nsw
-
 import org.greatcactus.vote.count._
 import javax.swing.{JButton, JEditorPane, JFileChooser, JFormattedTextField, JFrame, JLabel, JPanel, SwingUtilities, UIManager, WindowConstants}
 import java.awt.BorderLayout

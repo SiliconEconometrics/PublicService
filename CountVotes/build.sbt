@@ -11,10 +11,13 @@ libraryDependencies += "com.novocode" % "junit-interface" % "0.11" % "test" // j
 
 libraryDependencies += "com.google.code.gson" % "gson" % "2.8.1"
 
-libraryDependencies += "org.jsoup" % "jsoup" % "1.9.1"
+libraryDependencies += "org.jsoup" % "jsoup" % "1.9.1" // parse xml
+
+libraryDependencies += "org.apache.poi" % "poi-ooxml" % "4.1.2" // parse xslx files
 
 scalacOptions ++= Seq("-deprecation", "-feature")
 
 mainClass in assembly := Some("org.greatcactus.vote.count.MainApp")
 
 test in assembly := {}
+

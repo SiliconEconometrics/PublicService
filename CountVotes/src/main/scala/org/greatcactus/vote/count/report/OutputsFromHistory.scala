@@ -43,7 +43,7 @@ object MichelleSTVOutputFormat {
     // eg. 0,54,6,2,3,8,...
     val candidatesInOrderOfEliminationOrElection = new ArrayBuffer[(CandidateIndex,Tally)]
     for (h<-report.history) {
-      val happensHere = h.countType.candidatesEliminated.reverse.map{c=>(c,h.totalAtStart(c).toInt)}++h.electedCandidates.map{_._1}.map{c=>(c,h.totalAtEnd(c).toInt)}
+      val happensHere = h.countType.candidatesEliminated.reverse.map{c=>(c,h.totalAtStart(c).toLong)}++h.electedCandidates.map{_._1}.map{c=>(c,h.totalAtEnd(c).toLong)}
       candidatesInOrderOfEliminationOrElection++=happensHere.filter{case (c,_) => candidatesInOrderOfEliminationOrElection.forall{_._1 !=c}}
     }
     pw.println("# Candidates in order of elimination or election")

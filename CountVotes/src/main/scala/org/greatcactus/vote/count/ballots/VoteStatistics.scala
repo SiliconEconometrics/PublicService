@@ -1,11 +1,32 @@
+/*
+    Copyright 2020 Silicon Econometrics Pty. Ltd.
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
+
 package org.greatcactus.vote.count.ballots
 
-class MeanPosition(val numATL:Int,val numBTL:Int,val meanPosition: Array[Double])
+import org.greatcactus.vote.count.MainDataTypes.{NumberOfCandidates, PaperCountUnscaled}
+
+
+class MeanPosition(val numATL:PaperCountUnscaled,val numBTL:PaperCountUnscaled,val meanPosition: Array[Double])
 class MultiMeanPosition(val btls:MeanPosition,val btlsByFirstPreference:Array[MeanPosition],val all:MeanPosition,val allByFirstPreference:Array[MeanPosition])
 
-class MeanPositionBuilder(numCandidates:Int) {
-  var numBTL : Int = 0
-  var numATL : Int = 0
+class MeanPositionBuilder(numCandidates:NumberOfCandidates) {
+  var numBTL : PaperCountUnscaled = 0
+  var numATL : PaperCountUnscaled = 0
   val sumVotes : Array[Double] = new Array[Double](numCandidates) // sum over each vote of the ordinal number of the vote for that candidate. Blanks count as the mean of the remaining votes.
   def add(v:Vote): Unit = {
     if (v.src.isATL) numATL+=v.numVoters else numBTL+=v.numVoters

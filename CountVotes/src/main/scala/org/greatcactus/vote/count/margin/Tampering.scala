@@ -19,10 +19,10 @@
 package org.greatcactus.vote.count.margin
 
 import org.greatcactus.vote.count.ElectionResultReport
-import org.greatcactus.vote.count.MainDataTypes.{CandidateIndex, Tally}
+import org.greatcactus.vote.count.MainDataTypes.{CandidateIndex, Tally, TallyMaxValue, TallyUnscaled}
 import org.greatcactus.vote.count.ballots.ElectionData
 import org.greatcactus.vote.count.margin.TransferResolution.CannotFindTamperableVotesException
-import org.greatcactus.vote.count.weighted.{ContinuingCandidates, TamperableVotes, WeightedCountHelper, WeightedVotes}
+import org.greatcactus.vote.count.weighted.{ContinuingCandidates, TamperableVotes, WeightedCountHelper}
 
 /**
   * One way of computing the margin is to see how many votes need to be
@@ -74,7 +74,7 @@ object Tampering {
 
   /** Normally, at each round one makes a concerted effect to unseat an elected candidate. If this is true, then try everyone. This rarely helps and significantly increases time. Recommended false. */
   val shouldTryToExcludeEveryoneNotJustInLastRound : Boolean = false
-  /** Whether we are at all interested in changing ATL votes. Recommeded true */
+  /** Whether we are at all interested in changing ATL votes. Recommended true */
   val shouldConsiderUsingATL : Boolean = true
   /** Whether we should do the expensive binary search on tampers excluding 1 prefs. Recommended true */
   val shouldOptimizeBinarySearchRerunElection : Boolean = true
@@ -82,7 +82,7 @@ object Tampering {
   val shouldOptimizeBinarySearchRerunElectionEvenFor1Prefs : Boolean = false
   /** Whether we should try to deal with taking votes from people other than the new loser if they have a low transfer value. Recommended true */
   val optimizeLowTransferValuesFromNewLoser : Boolean = true
-  /** Whether we should try taking votes from just people who are not the new loser. Recommedned true */
+  /** Whether we should try taking votes from just people who are not the new loser. Recommended true */
   val tryIndirectExclusion : Boolean = true
 
 
@@ -93,11 +93,12 @@ object Tampering {
                                             //marginOptions:WhatMarginInformationToCompute,
                                             /** If this is being done after the step is complete (at end of election, special case ending). */afterStepCount:Boolean
                                           ) : Unit = {
-    def tallys: Array[Tally] = helper.tallys
-    def ballots: Array[WeightedVotes] = helper.ballots
+    val tallys: Array[TallyUnscaled] = helper.tallys.map{_/helper.voteMultipleToDealWithFractionalVotes}
+    val quota = helper.quota/helper.voteMultipleToDealWithFractionalVotes
     def continuingCandidates: ContinuingCandidates = helper.continuingCandidates
     def report: ElectionResultReport = helper.report
     val data: ElectionData = helper.data
+    def getTamperableVotes(from:CandidateIndex,allowATL:Boolean,use1Pref:Boolean) : List[TamperableVotes] = helper.ballots(from).getTamperableVotes(data.candidates(from).position-1,wantActualVotes = true,allowATL,use1Pref,helper.voteMultipleToDealWithFractionalVotes)
     def name(index:CandidateIndex): String = data.candidates(index).name
     def countNumber: Int = report.history.length+(if (afterStepCount) 0 else 1)
 
@@ -114,7 +115,7 @@ object Tampering {
 
     /** Get votes that could conceivably be taken away from a given candidate */
     def getGiveAwayableVotes(from:CandidateIndex,useATL:Boolean,use1Pref:Boolean): List[CanGiveAwayVotes] = {
-      val tamperableList: List[TamperableVotes] = ballots(from).getTamperableVotes(data.candidates(from).position-1,wantActualVotes = true,allowATL = useATL,use1Pref)
+      val tamperableList: List[TamperableVotes] = getTamperableVotes(from,allowATL = useATL,use1Pref)
       for (tamperable<-tamperableList if tamperable.votes>0) yield CanGiveAwayVotes(from,tamperable)
     }
 
@@ -165,15 +166,15 @@ object Tampering {
             def works(number:Tally) : Boolean = rerunToSeeIfCandidateChanged(change(votesNeeded,changingCandidate,number)).isDefined
             val actuallyNeeded = if (votesNeeded.length<5) { // do full binary search
               //println("Starting bsearch needed="+currentNeeded)
-              BinarySearch.findLowest(works,0,currentNeeded)
+              BinarySearch.findLowest(works : Tally=>Boolean,0,currentNeeded)
             } else { // just try setting to zero, a common solution
-              if (works(0)) 0 else currentNeeded
+              if (works(0)) 0:Tally else currentNeeded
             }
             votesNeeded=change(votesNeeded,changingCandidate,actuallyNeeded)
           }
           if (votesNeeded == stateAtStartOfPass) break // don't waste time with another pass
         }}
-      } else votesNeededByLowerThanCToPassC
+      }
       for (res<-rerunToSeeIfCandidateChanged(votesNeeded)) yield (res,votesNeeded) // sanity check that the result works at all.
     }
 
@@ -191,20 +192,20 @@ object Tampering {
         * the candidates below c. "Fills up" in order to maximise the minimum number of votes that someone has.
         * eg. If the tallys are  L:100 M:10 N:5 O:3 then the first two will go to O, and the next 2*5 will be split amongst N and O, then M will start getting them too.
         */
-      def computeRecipients(votesLost:Int) : Array[TamperedVoteNoPapers] = { // work out who gets the votes
-        val votesGivenTo : Array[Int] = new Array[Int](continuingLowToHigh.length) // votes given to candidate by index position
+      def computeRecipients(votesLost:Tally) : Array[TamperedVoteNoPapers] = { // work out who gets the votes
+        val votesGivenTo : Array[Tally] = new Array[Tally](continuingLowToHigh.length) // votes given to candidate by index position
         var numGivenTo = 0 // number of candidates given votes
         var togo = votesLost
         def tally(index:Int) = { // modified tally due to getting extra votes
           if (index>=continuingLowToHigh.length) {
             if (!afterStepCount) throw new IllegalArgumentException("This should only happen if c is not a continuing candidate, which only makes sense to consider at the last step of the election.")
-            Integer.MAX_VALUE
+            TallyMaxValue
           } else {
             val who = continuingLowToHigh(index)
-            if (who==c) Integer.MAX_VALUE else votesGivenTo(index)+tallys(who)
+            if (who==c) TallyMaxValue else votesGivenTo(index)+tallys(who)
           }
         }
-        def give(index:Int,n:Int) { votesGivenTo(index)+=n; togo-=n }
+        def give(index:Int,n:Tally) { votesGivenTo(index)+=n; togo-=n }
         while (togo>0) {
           numGivenTo+=1
           val toCatchUp = tally(numGivenTo)-tally(numGivenTo-1) // distribute all votes until the next smallest candidate is reached.
@@ -212,7 +213,7 @@ object Tampering {
           val giveEach = maxToAll min toCatchUp
           for (i<-0 until numGivenTo) give(i,giveEach)
           if (giveEach<toCatchUp) // distribute remaining lot, weakest candidate first
-            for (i<-0 until togo) give(i,1)
+            for (i<-0 until togo.toInt) give(i,1) // togo < numGivenTo < numCandidates
         }
         val result = for (i<-0 until numGivenTo if votesGivenTo(i)>0) yield new TamperedVoteNoPapers(c,continuingLowToHigh(i),votesGivenTo(i))
         result.toArray
@@ -220,10 +221,10 @@ object Tampering {
       /** A simple margin assuming you are taking a that number of votes from c and giving it to other people. The
         * minimum needed to make sure that c is excluded at the current step. Doesn't actually run the election, uses the helper. */
       val simpleMarginJustTakingFromC : Tally = {
-        def isExcludedByTransferringYourVotesToOthers(votesLost:Int) : Boolean = { // see if candidate c is excluded if s/he loses votesLost votes.
+        def isExcludedByTransferringYourVotesToOthers(votesLost:Tally) : Boolean = { // see if candidate c is excluded if s/he loses votesLost votes.
           //println(s"trying to exclude $votesLost for candidate $c tally "+tallys(c))
           val recipients = computeRecipients(votesLost)
-          val localTallys : Array[Int] = tallys.clone()
+          val localTallys : Array[Tally] = tallys.clone()
           localTallys(c)-=votesLost
           for (recipient<-recipients) localTallys(recipient.candidateTo)+=recipient.numVotes
           val newOrdered = continuingCandidates.orderedList.sortBy { -localTallys(_) }
@@ -231,15 +232,15 @@ object Tampering {
           //println("Ordered : "+newOrdered+" nowExcluded="+nowExcluded.mkString(",")); Thread.sleep(300)
           nowExcluded.contains(c)
         }
-        BinarySearch.findLowest(isExcludedByTransferringYourVotesToOthers,0,tallys(c)-tallys(continuingLowToHigh(0))+1)
+        BinarySearch.findLowest(isExcludedByTransferringYourVotesToOthers : Tally=>Boolean,0:Tally,tallys(c)-tallys(continuingLowToHigh(0))+1)
       }
 
-      def tryJustTakingVotesFromTheCandidate(votesLost:Int,requireTamperable:Boolean) : Option[MarginAndResults] = {
+      def tryJustTakingVotesFromTheCandidate(votesLost:Tally,requireTamperable:Boolean) : Option[MarginAndResults] = {
         val surplusVotesAvailable:List[CanGiveAwayVotes] = if (requireTamperable) availableFromCNo1Prefs else availableFromCWith1Prefs
-        val numSpare : Tally = surplusVotesAvailable.map{_.votes.votes}.sum-votesLost
+        val numSpare : TallyUnscaled = surplusVotesAvailable.map{_.votes.votes}.sum-votesLost
         if (numSpare>=0) {
           val doExpensiveSearch = if (requireTamperable) shouldOptimizeBinarySearchRerunElection else shouldOptimizeBinarySearchRerunElectionEvenFor1Prefs
-          val fudgeFactorForRoundingWhenDeterminingTamperMargins = if (doExpensiveSearch) 20 min numSpare else 0 // edit this by hand if needed. The minimum number is to prevent it failing gratuitously because of the added 20. The added 20 is to look after funny misses due to rounding.
+          val fudgeFactorForRoundingWhenDeterminingTamperMargins : TallyUnscaled = if (doExpensiveSearch) (20:TallyUnscaled) min numSpare else 0:TallyUnscaled // edit this by hand if needed. The minimum number is to prevent it failing gratuitously because of the added 20. The added 20 is to look after funny misses due to rounding.
           //val totalAvailable =
           val neededVotes:List[(CandidateIndex,Tally)] = computeRecipients(votesLost+fudgeFactorForRoundingWhenDeterminingTamperMargins).map{tvnp=>(tvnp.candidateTo,tvnp.numVotes)}.toList
           binarySearchOptimizeVotesNeeded(surplusVotesAvailable,neededVotes,doExpensiveSearch,Set(c)).map{_._1}
@@ -267,7 +268,7 @@ object Tampering {
         /** The specific votes that people can give away. No attempt is made to choose which ones are the best. */
         val availableFromOthers : List[CanGiveAwayVotes] = surplusVotes.flatMap{
           case (who,surplus) if surplus>fudgeFactorForRoundingWhenDeterminingTamperMargins && who!=c =>
-            val untruncated = ballots(who).getTamperableVotes(data.candidates(who).position-1,wantActualVotes = true,allowATL = useATL,allow1Prefs = false)
+            val untruncated = getTamperableVotes(who,allowATL = useATL,use1Pref = false)
             val buffer = new collection.mutable.ListBuffer[TamperableVotes]
             var remainingSurplus = surplus-fudgeFactorForRoundingWhenDeterminingTamperMargins
             for (t<-untruncated) if (remainingSurplus>0) {
@@ -282,7 +283,7 @@ object Tampering {
         val allVotesAvailable = reallyAvailableFromCtamperable++availableFromOthersSorted
         //println("SWI round="+countNumber+" c="+c+" "+data.candidates(c).name+" surplusVotes="+surplusVotes)
         /** The votes needed to get people below C up to tallyToMoveEveryoneElseTo */
-        val votesNeededByLowerThanCToPassC1 : List[(CandidateIndex,Tally)] = surplusVotes.dropWhile(_._1 !=c).tail.map{pair=>(pair._1,0 max -pair._2)}
+        val votesNeededByLowerThanCToPassC1 : List[(CandidateIndex,Tally)] = surplusVotes.dropWhile(_._1 !=c).tail.map{pair=>(pair._1,(0:Tally) max -pair._2)}
         /** Re-order said list such that people who can't received ATL votes are dealt with first, so the BTL votes aren't unnecessarily wasted on them. */
         val votesNeededByLowerThanCToPassC2 : List[(CandidateIndex,Tally)] = ListUtil.moveToFront(votesNeededByLowerThanCToPassC1)({pair=> !canUseATL(pair._1)})
         //val extraNeededToCompensateForFewerTakenFromCThanExpected = 0 max Math.ceil((assumeTakenFromC-votesNeededByLowerThanCToPassC1.map{_._2}.sum+fudgeFactorForRoundingWhenDeterminingTamperMargins+1).toDouble/(1+votesNeededByLowerThanCToPassC1.length)).toInt
@@ -300,7 +301,7 @@ object Tampering {
           if (optimizeLowTransferValuesFromNewLoser && allowFromCAsWell) { // try, one at a time (while things are improving) taking the lowest transfer value from the potential transfers from C.
             var bestMargin : MarginAndResults = mar
             var fromC = reallyAvailableFromCtamperable
-            var extraVotesNeeded = 0
+            var extraVotesNeeded : Tally = 0
             //println("Trying optimizeLowTransferValuesFromNewLoser fromC="+fromC+" extraVotesNeeded="+extraVotesNeeded)
             while (fromC.nonEmpty) {
               extraVotesNeeded+=fromC.last.votes.votes
@@ -342,17 +343,17 @@ object Tampering {
     /** The backup workhorse. Try to give the candidate a quota, possibly using ATL votes. */
     def tryToGiveQuotaToCandidate(c:CandidateIndex,useATL:Boolean,allow1Prefs:Boolean): Unit = {
       val availableFromOthers : List[CanGiveAwayVotes] = (for (who<-continuingCandidates.orderedList if who!=c) yield {
-        val tamperable: Seq[TamperableVotes] = ballots(who).getTamperableVotes(data.candidates(who).position-1,wantActualVotes = true,allowATL = useATL,allow1Prefs = allow1Prefs)
+        val tamperable: Seq[TamperableVotes] = getTamperableVotes(who,allowATL = useATL,allow1Prefs)
         for (t<-tamperable) yield CanGiveAwayVotes(who,t)
       }).flatten.sortBy{- _.votes.tv}
       val doExpensiveSearch = if (!allow1Prefs) shouldOptimizeBinarySearchRerunElection else shouldOptimizeBinarySearchRerunElectionEvenFor1Prefs
-      val votesNeeded = helper.quota - tallys(c)
+      val votesNeeded = quota - tallys(c)
       val votesAvailable = availableFromOthers.map{_.votes.votes}.sum
       val availableForFudge = (votesAvailable-votesNeeded) max 0
-      val votesNeededWithMargin = votesNeeded + (if (doExpensiveSearch) (20 min availableForFudge) else 0)
+      val votesNeededWithMargin = votesNeeded + (if (doExpensiveSearch) (20:TallyUnscaled) min availableForFudge else 0:TallyUnscaled)
 
       def tryPrefFrom(preferredCandidateToTransferAwayFrom:Set[CandidateIndex]): Unit = {
-        processResult(binarySearchOptimizeVotesNeeded(availableFromOthers,List((c,votesNeededWithMargin)),true,preferredCandidateToTransferAwayFrom).map{_._1},useATL)
+        processResult(binarySearchOptimizeVotesNeeded(availableFromOthers,List((c,votesNeededWithMargin)),actuallyDoSearch = true,preferredCandidateToTransferAwayFrom).map{_._1},useATL)
       }
 
       println("Trying to give quota to candidate "+c+" useATL="+useATL+" use1PRefs="+allow1Prefs+" continuing candidates = "+continuingLowToHigh.mkString(",")+" with tallys "+continuingLowToHigh.map(tallys).mkString(",")+" votesNeeded="+votesNeeded+" votesAvailable="+votesAvailable+" afterStepCount="+afterStepCount)
@@ -377,7 +378,7 @@ object Tampering {
     // now consider how we could get a (previously losing) candidate a quota.
 
     val candidatesToConsiderGettingElected : List[CandidateIndex] = continuingCandidates.orderedList.filterNot(normalElectionOutcome.winners.contains)
-    for (c<-candidatesToConsiderExcluding) { // try to exclude candidate c
+    for (c<-candidatesToConsiderGettingElected) {
       for (use1Pref<-List(false,true)) {
         tryToGiveQuotaToCandidate(c,useATL = false,allow1Prefs=use1Pref)
         if (shouldConsiderUsingATL) tryToGiveQuotaToCandidate(c,useATL = true,allow1Prefs=use1Pref)

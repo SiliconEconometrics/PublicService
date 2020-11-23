@@ -18,7 +18,7 @@
 package org.greatcactus.vote.count.federal
 
 import org.greatcactus.vote.count._
-import org.greatcactus.vote.count.federal.parsing.FederalElectionDataLoader2019
+import org.greatcactus.vote.count.federal.parsing.{FederalElectionDataLoader2016, FederalElectionDataLoader2019}
 import org.junit.Assert._
 import org.junit.Test
 

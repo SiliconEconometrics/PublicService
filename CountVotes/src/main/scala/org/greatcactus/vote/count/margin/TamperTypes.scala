@@ -1,5 +1,5 @@
 /*
-    Copyright 2016-2019 Silicon Econometrics Pty. Ltd.
+    Copyright 2016-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 
 package org.greatcactus.vote.count.margin
 
-import org.greatcactus.vote.count.MainDataTypes.{CandidateIndex, Tally}
+import org.greatcactus.vote.count.MainDataTypes.{CandidateIndex, PaperCount, Tally}
 import org.greatcactus.vote.count.ballots.{ActualListOfTamperableVotes, Candidate, ElectionMetadata}
 import org.greatcactus.vote.count.weighted.TamperableVotes
 
@@ -42,7 +42,7 @@ case class ElectionChanged(originalElected:List[CandidateIndex],newElected:List[
 
 /** A somewhat concrete description of some votes that were tampered with, with a common theme of who they are coming from and who to.
   * In practice, the total list of tampered votes may consist of multiple of these. */
-class TamperedVote(val whoFrom:Int,val whoTo:Int,val numPapers:Int,val numVotes:Int,val src:Option[ActualListOfTamperableVotes],val isATL:Boolean,val hasFirstPrefChanges: Boolean) {
+class TamperedVote(val whoFrom:Int,val whoTo:Int,val numPapers:PaperCount,val numVotes:Tally,val src:Option[ActualListOfTamperableVotes],val isATL:Boolean,val hasFirstPrefChanges: Boolean) {
   if (numPapers<0) throw new IllegalArgumentException
   def desc(candidates:Array[Candidate]) : String = candidates(whoFrom).name+"\u2192"+candidates(whoTo).name+":"+numPapers+(if (numPapers!=numVotes) "("+numVotes+" votes)" else "")+" "+(if (isATL) "ATL" else "BTL") // \u2192 is right arrow
   override def toString: String = whoFrom+"\u2192"+whoTo+":"+votedesc // \u2192 is right arrow
@@ -57,8 +57,8 @@ class Margin(/* The vote counting step this refers to */val step:Int,/** The act
   var hasFirstPrefChanges: Boolean = tamperings.exists(_.hasFirstPrefChanges)
   def hasATL:Boolean = tamperings.exists(_.isATL)
 
-  val votes: Int = tamperings.map { _.numVotes}.sum
-  val papers: Int = tamperings.map {_.numPapers}.sum
+  val votes: Tally = tamperings.map { _.numVotes}.sum
+  val papers: PaperCount = tamperings.map {_.numPapers}.sum
 
   /** Pretty printing string */
   def how(candidates:Array[Candidate]) : String = tamperings.map{_.desc(candidates)}.mkString(" , ")
@@ -177,7 +177,7 @@ object TransferResolution {
     * Throws CannotFindTamperableVotesException if not possible. */
   private def getTransfers1(surplusVotesAvailable:List[CanGiveAwayVotes], neededVotes:List[(CandidateIndex,Tally)]) : TransferResolution = neededVotes match {
     case Nil => new TransferResolution(Nil,surplusVotesAvailable) // all done
-    case (_,0)::nt => getTransfers1(surplusVotesAvailable,nt) // 0 votes wanted
+    case (_,0L)::nt => getTransfers1(surplusVotesAvailable,nt) // 0 votes wanted
     case (candidateNeedingVotes,numberVotesNeeded)::nt =>
       if (numberVotesNeeded<0) throw new IllegalArgumentException
       if (surplusVotesAvailable.isEmpty) throw new CannotFindTamperableVotesException

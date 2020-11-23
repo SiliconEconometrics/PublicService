@@ -18,7 +18,6 @@
  */
 
 package org.greatcactus.vote.count.nsw
-
 import org.greatcactus.vote.count._
 
 import org.jsoup.nodes.Document

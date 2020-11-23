@@ -1,5 +1,5 @@
 /*
-    Copyright 2016-2017 Silicon Econometrics Pty. Ltd.
+    Copyright 2016-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -50,7 +50,7 @@ object MichelleFormat {
     }
     for (v<-votes) {
       val source = if (v.src.isATL) "ATL" else "BTL"
-      val normal = "("+v.preferences.mkString(",")+"):"+v.numVoters.toInt
+      val normal = "("+v.preferences.mkString(",")+"):"+v.numVoters
       pw.println(source+" "+normal)
     }
     pw.close()

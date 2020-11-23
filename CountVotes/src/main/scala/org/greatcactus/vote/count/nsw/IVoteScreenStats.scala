@@ -1,5 +1,5 @@
 /*
-    Copyright 2017-2019 Silicon Econometrics Pty. Ltd.
+    Copyright 2017-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
 
  */
 package org.greatcactus.vote.count.nsw
-
+import org.greatcactus.vote.count.MainDataTypes.PaperCountUnscaled
 import org.greatcactus.vote.count._
 import org.greatcactus.vote.count.ballots.{ElectionData, GroupInformation}
 
@@ -31,13 +31,13 @@ object IVoteScreenStats extends App {
     
     def analyse(stats:ElectionData) {
       val groupIndexFromID = stats.groupIndexFromID+(""->stats.groupInfo.length)
-      val groupCounter = new Array[Int](stats.groupInfo.length+1)
+      val groupCounter = new Array[PaperCountUnscaled](stats.groupInfo.length+1)
       for (v<-stats.satls) groupCounter(stats.groupIndexFromID(v.group))+=v.numVoters
       for (v<-stats.ratls) groupCounter(v.groups.map(stats.groupIndexFromID).max)+=v.numVoters
       for (v<-stats.btls) groupCounter(groupIndexFromID(stats.candidates(v.candidates.max).group))+=v.numVoters
       stats.printStatus()
       val total = stats.totalFormalVotes
-      var cumulative = 0
+      var cumulative : PaperCountUnscaled = 0
       for (i<-0 until stats.groupInfo.length+1) {
         val g = if (i==stats.groupInfo.length) new GroupInformation("UG","UG",Some("UG"),Array()) else stats.groupInfo(i)
         cumulative+=groupCounter(i)

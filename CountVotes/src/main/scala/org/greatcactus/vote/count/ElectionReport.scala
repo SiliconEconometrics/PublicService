@@ -26,8 +26,7 @@ import java.io._
 import scala.collection.mutable.ListBuffer
 import org.greatcactus.vote.count.nsw.VotesToBeTransferred
 import org.greatcactus.vote.count.margin.{BestMarginsRecorder, ElectionChanged, Margin, MarginProperties, NormalElectionOutcome}
-import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
-import org.greatcactus.vote.count.MainDataTypes.Tally
+import org.greatcactus.vote.count.MainDataTypes.{CandidateIndex, NumberOfCandidates, PaperCount, Tally}
 import org.greatcactus.vote.count.ballots.{Candidate, ElectionData, ElectionMetadata}
 import org.greatcactus.vote.count.report.MichelleSTVOutputFormat
 
@@ -35,10 +34,21 @@ import scala.collection.AbstractSeq
 
 object ToTextUtil {
   def blankIfZero(num:Double): String = if (num==0) "" else stringOfVoteCount(num)
+
+  import java.text.DecimalFormat
+  import java.text.DecimalFormatSymbols
+  import java.util.Locale
+
+  val df = new DecimalFormat("0", DecimalFormatSymbols.getInstance(Locale.ENGLISH))
+  df.setMaximumFractionDigits(6) // never want more than 6 decimal digits
+
   def stringOfVoteCount(num:Double): String = {
+    val res = df.format(num)
+    if (res=="-0") "0" else res
+    /*
     val eps = 1e-8
     val intv = (num+eps*num.signum).toInt
-    if ((intv-num).abs<eps) intv.toString else num.toString
+    if ((intv-num).abs<eps) intv.toString else num.toString */
   }  
 }
 import ToTextUtil._
@@ -391,10 +401,10 @@ object ReportSaverZip {
   def apply(file:File) = new ReportSaverZip(new ReportSaverZipBase(file),"")
 }
 
-class ElectionProgressiveTotals(val excludedCandidates:Set[Int],val electedCandidates:Set[Int],val ineligibleCandidates:Set[Int],val exhausedVotes:Double,val exhaustedPapers:Double,val votesSetAside:Double,val lostDueToRounding:Double,tallys:Int=>Double,papers:Option[Int=>Int],papersATL:Option[Int=>Int],numCandidates:Int) {
+class ElectionProgressiveTotals(val excludedCandidates:Set[CandidateIndex],val electedCandidates:Set[CandidateIndex],val ineligibleCandidates:Set[CandidateIndex],val exhausedVotes:Double,val exhaustedPapers:Double,val votesSetAside:Double,val lostDueToRounding:Double,tallys:CandidateIndex=>Double,papers:Option[CandidateIndex=>PaperCount],papersATL:Option[CandidateIndex=>PaperCount],numCandidates:NumberOfCandidates) {
   val votesPerCandidate : Array[Double] = Array.tabulate(numCandidates)(tallys)
-  val papersPerCandidate : Option[Array[Int]] = papers.map{p=>Array.tabulate(numCandidates)(p)}
-  val papersPerCandidateATL : Option[Array[Int]] = papersATL.map{p=>Array.tabulate(numCandidates)(p)}
+  val papersPerCandidate : Option[Array[PaperCount]] = papers.map{p=>Array.tabulate(numCandidates)(p)}
+  val papersPerCandidateATL : Option[Array[PaperCount]] = papersATL.map{p=>Array.tabulate(numCandidates)(p)}
   def continuingCandidates : Set[Int] = ((0 until numCandidates).toSet--excludedCandidates)--electedCandidates
 }
 
@@ -410,12 +420,12 @@ class ElectionCountReport(val numCandidates:Int,val countType:CountReportType,va
   def exhaustedPapersAtStart = if (start!=null) start.exhaustedPapers else 0.0
   def exhaustedPapersAtEnd = if (end!=null) end.exhaustedPapers else 0.0
   def exhaustedPapersTransferred = exhaustedPapersAtEnd-exhaustedPapersAtStart
-  def totalAtStart(c:Int) = if (start==null) 0.0 else start.votesPerCandidate(c)
-  def totalAtEnd(c:Int) = if (end==null) 0.0 else end.votesPerCandidate(c)
-  def papersAtStart(c:Int) = if (start==null || start.papersPerCandidate.isEmpty) 0 else start.papersPerCandidate.get(c)
-  def papersAtEnd(c:Int) = if (end==null || end.papersPerCandidate.isEmpty) 0 else end.papersPerCandidate.get(c)
-  def papersAtEndATL(c:Int) = if (end==null || end.papersPerCandidateATL.isEmpty) 0 else end.papersPerCandidateATL.get(c)
-  def papersTransferred(c:Int) = papersAtEnd(c)-papersAtStart(c)
+  def totalAtStart(c:CandidateIndex) = if (start==null) 0.0 else start.votesPerCandidate(c)
+  def totalAtEnd(c:CandidateIndex) = if (end==null) 0.0 else end.votesPerCandidate(c)
+  def papersAtStart(c:CandidateIndex) = if (start==null || start.papersPerCandidate.isEmpty) 0:PaperCount else start.papersPerCandidate.get(c)
+  def papersAtEnd(c:CandidateIndex) = if (end==null || end.papersPerCandidate.isEmpty) 0:PaperCount else end.papersPerCandidate.get(c)
+  def papersAtEndATL(c:CandidateIndex) = if (end==null || end.papersPerCandidateATL.isEmpty) 0:PaperCount else end.papersPerCandidateATL.get(c)
+  def papersTransferred(c:CandidateIndex) = papersAtEnd(c)-papersAtStart(c)
   def ballotPapersTransferred(candidate:Int) = totalAtEnd(candidate)-totalAtStart(candidate) 
   val ballotPapersDistributed = new Array[Double](numCandidates)
   val electedCandidates = new ArrayBuffer[(Int,String)] // elected this round
@@ -427,28 +437,28 @@ class ElectionCountReport(val numCandidates:Int,val countType:CountReportType,va
   // methods that are overridden for stochastic
   def heading(candidates:Array[Candidate]) : String = countType.heading(candidates)
   import ElectionReport._
-  def string_totalAtStart(c:Int) : String = stringOfVoteCount(totalAtStart(c))
-  def string_totalAtEnd(c:Int) : String = stringOfVoteCount(totalAtEnd(c))
-  def string_ballotPapersDistributed(c:Int) : String = stringOfVoteCount(ballotPapersDistributed(c))
-  def string_ballotPapersTransferred(c:Int) : String = stringOfVoteCount(ballotPapersTransferred(c))
-  def string_ballotPapersSetAside(c:Int) : String = stringOfVoteCount(ballotPapersSetAside(c))
+  def string_totalAtStart(c:CandidateIndex) : String = stringOfVoteCount(totalAtStart(c))
+  def string_totalAtEnd(c:CandidateIndex) : String = stringOfVoteCount(totalAtEnd(c))
+  def string_ballotPapersDistributed(c:CandidateIndex) : String = stringOfVoteCount(ballotPapersDistributed(c))
+  def string_ballotPapersTransferred(c:CandidateIndex) : String = stringOfVoteCount(ballotPapersTransferred(c))
+  def string_ballotPapersSetAside(c:CandidateIndex) : String = stringOfVoteCount(ballotPapersSetAside(c))
   def string_exhaustedAtStart : String = stringOfVoteCount(start.exhausedVotes)
   def string_exhaustedAtEnd : String = stringOfVoteCount(end.exhausedVotes)
   def string_exhaustedPapersAtStart : String = stringOfVoteCount(exhaustedPapersAtStart)
   def string_exhaustedPapersAtEnd : String = stringOfVoteCount(exhaustedPapersAtEnd)
   def string_exhaustedPapersTransferred = blankIfZero(exhaustedPapersTransferred)
   def string_exhaustedDistributed = blankIfZero(countType.numExhaustedDistributed)
-  def string_exhaustedTransferred = blankIfZero(countType.numExhaustedThatWouldBeCarriedOn)
+  def string_exhaustedTransferred = blankIfZero(if (countType.useDistributed) countType.numExhaustedSetAside else ((if (end==null) 0.0 else end.exhausedVotes)-(if (start==null) 0.0 else start.exhausedVotes)))
   def string_exhaustedSetAside = blankIfZero(countType.numExhaustedSetAside)
   def string_roundingAtStart : String = stringOfVoteCount(roundingAtStart)
   def string_roundingAtEnd : String = stringOfVoteCount(roundingAtEnd)
   def string_roundingTransferred = blankIfZero(roundingTransferred)
   def string_setAsidePrior = stringOfVoteCount(countType.setAsidePrior)
-  def string_papersAtEnd(c:Int) : String = stringOfVoteCount(papersAtEnd(c))
-  def string_papersAtEndATL(c:Int) : String = papersAtEndATL(c).toString
-  def string_papersAtEndBTL(c:Int) : String = (papersAtEnd(c)-papersAtEndATL(c)).toString
-  def string_papersAtStart(c:Int) : String = stringOfVoteCount(papersAtStart(c))
-  def string_papersTransferred(c:Int) : String = stringOfVoteCount(papersTransferred(c))
+  def string_papersAtEnd(c:CandidateIndex) : String = stringOfVoteCount(papersAtEnd(c))
+  def string_papersAtEndATL(c:CandidateIndex) : String = papersAtEndATL(c).toString
+  def string_papersAtEndBTL(c:CandidateIndex) : String = (papersAtEnd(c)-papersAtEndATL(c)).toString
+  def string_papersAtStart(c:CandidateIndex) : String = stringOfVoteCount(papersAtStart(c))
+  def string_papersTransferred(c:CandidateIndex) : String = stringOfVoteCount(papersTransferred(c))
   
   var equalCandidatesDisabiguatedByEC : Set[Set[Int]] = Set.empty
   var extraRoundingAdded : Option[Tally] = None
@@ -535,6 +545,7 @@ abstract class CountReportType(val name:String,val useStartCounts:Boolean,val us
   def numExhaustedSetAside = 0.0
   def setAsidePrior = 0.0
   def numExhaustedDistributed = numExhaustedThatWouldBeCarriedOn+numExhaustedSetAside
+  def numExhaustedTransferred = if (useDistributed) 0.0 else numExhaustedDistributed
   /** A string that defines the structure... if two values have the same value of this, then the same people do the same things, but the counts may be different */
   def structureDesc(candidates:Array[Candidate],ignoreWhoIsEliminatedForMergingIntoStochasticReport:Boolean) : String
 }
@@ -581,7 +592,7 @@ class ElectionResultReport(val candidates:Array[Candidate],val ineligibleCandida
    var progressiveTotalOfExhaustedPapers=0.0
    var progressiveTotalOfLostDueToRounding=0.0
    var progressiveTotalOfSetasideVotes=0.0
-   var quota = 0
+   var quota : Tally = 0
    def setQuota(actualQuota:Int) { quota=actualQuota }
    def declareElected(candidateID:Int,reason:String) {
     electedCandidates+=candidateID
@@ -592,13 +603,13 @@ class ElectionResultReport(val candidates:Array[Candidate],val ineligibleCandida
      if (printDebugMessages) println("Count "+history.length+" EC had to decide among "+(for (c<-equalCandidates.toList.sorted) yield candidates(c).name+" ("+c+") ").mkString(","))
      currentCount.addECDecision(equalCandidates)
    }
-   var tallys:Int=>Double=_
-   var papers:Option[Int=>Int]=None
-   var papersATL:Option[Int=>Int]=None
+   var tallys:CandidateIndex=>Double=_
+   var papers:Option[CandidateIndex=>PaperCount]=None
+   var papersATL:Option[CandidateIndex=>PaperCount]=None
    /** Must be called before anything else */
-   def setTallyFunction(f:Int=>Double) { tallys=f }
+   def setTallyFunction(f:CandidateIndex=>Double) { tallys=f }
    /** May be called to distinguish papers (physical votes) from tallys (which may be weighted) */
-   def setPapersFunction(total:Int=>Int,atl:Int=>Int) { papers=Some(total); papersATL=Some(atl) }
+   def setPapersFunction(total:CandidateIndex=>PaperCount, atl:CandidateIndex=>PaperCount) { papers=Some(total); papersATL=Some(atl) }
    /** May (and should be) called at the end of the counting to release references to functions provided above to save memory */
    def freeReferencesWhenAllDone() { tallys=null; papers=None; papersATL=None }
    var numStochastic = 0

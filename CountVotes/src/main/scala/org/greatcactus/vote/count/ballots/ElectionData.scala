@@ -18,10 +18,11 @@
 
 package org.greatcactus.vote.count.ballots
 
+
 import java.io.File
 import java.util
 
-import org.greatcactus.vote.count.MainDataTypes.CandidateIndex
+import org.greatcactus.vote.count.MainDataTypes.{CandidateIndex, NumberOfCandidates, PaperCount, PaperCountUnscaled, PreferenceNumber}
 import org.greatcactus.vote.count.{OCRStats, OCRVoteStatistic}
 import org.greatcactus.vote.count.ballots.GroupInformation.{GroupID, GroupIndex}
 import org.greatcactus.vote.count.margin.Margin
@@ -42,7 +43,7 @@ sealed class ElectionData(
     val satls : Array[SATL],
     val ratls : Array[ATL],
     val btls : Array[BTL],
-    val numInformal : Int
+    val numInformal : PaperCountUnscaled
     ) {
  // def name : String = meta.electionName.name
  // def year : String = meta.electionName.year
@@ -55,9 +56,9 @@ sealed class ElectionData(
   def groupNameFromID: Map[GroupID, String] = meta.groupNameFromID
   def candidateIndexFromName: Map[String, CandidateIndex] = meta.candidateIndexFromName
 
-  def numSATLs : Int = satls.map{_.numVoters}.sum
-  def numRATLs : Int = ratls.map{_.numVoters}.sum
-  def numBTLs : Int = btls.map{_.numVoters}.sum
+  def numSATLs : PaperCountUnscaled = satls.map{_.numVoters}.sum
+  def numRATLs : PaperCountUnscaled = ratls.map{_.numVoters}.sum
+  def numBTLs : PaperCountUnscaled = btls.map{_.numVoters}.sum
   def printStatus() {
     println(meta.electionName.toString)
     println("SATLs : "+numSATLs)
@@ -68,13 +69,13 @@ sealed class ElectionData(
     println("Candidates : " + candidates.length)
     if (consolidatedNumberOfTicketChoiceCombinations>1)  println("Number of ticket start combinations : "+consolidatedNumberOfTicketChoiceCombinations)
   }
-  def totalFormalVotes : Int = numSATLs+numRATLs+numBTLs
+  def totalFormalVotes : PaperCountUnscaled = numSATLs+numRATLs+numBTLs
   val usesGroupVotingTickets : Boolean = groupInfo.exists { _.tickets.length>0 }
   val ticketRoundingChoices : Array[Int] = for (satl<-satls) yield { // number of random choices EC has to make for group voting tickets, by SATL.
     val fromtickets = groupFromID(satl.group).tickets.length max 1 // intrinsic number of choices, but may not crop up
     if (satl.numVoters%fromtickets==0) 1 else fromtickets
   }
-  val candidatesInGroup : Map[GroupID,Array[Int]] = Map.empty++ (for ((group,l)<-candidates.zipWithIndex.groupBy{ _._1.group }) yield (group,l.map{_._2}.toList.sorted.toArray))
+  val candidatesInGroup : Map[GroupID,Array[CandidateIndex]] = Map.empty++ (for ((group,l)<-candidates.zipWithIndex.groupBy{ _._1.group }) yield (group,l.map{_._2}.toList.sorted.toArray))
   private val consolidatedNumberOfTicketChoiceCombinations : Int = ticketRoundingChoices.product
   def makeVotes(ticketRoundingChoicesMade:Map[GroupID,Int]=Map.empty) : Array[Vote] = {
     val res = new scala.collection.mutable.ArrayBuffer[Vote]
@@ -107,7 +108,7 @@ sealed class ElectionData(
     res.toArray
   }
   def candidateIndex(name:String) : CandidateIndex = candidates.indexWhere { _.name==name}
-  def numCandidates : Int = candidates.length
+  def numCandidates : NumberOfCandidates = candidates.length
   
   /** Same data, should produce same results, but with the id numbers of the candidates reversed. Used for testing... if it doesn't produce the same results, something is wrong. */
   def reverseCandidateOrder : ElectionData = {
@@ -116,7 +117,7 @@ sealed class ElectionData(
 
   class TamperWork(val tamperName:String) {
     var excludeVotes : Set[VoteSource] = Set.empty
-    var partialExcludeVotes : Map[VoteSource,Int] = Map.empty
+    var partialExcludeVotes : Map[VoteSource,PaperCountUnscaled] = Map.empty
     val addVotes = new ArrayBuffer[VoteSource]
 
     def process[T <: VoteSourceSubsettable[T] : ClassTag](invotes:Array[T]) : Array[T] = {
@@ -137,7 +138,7 @@ sealed class ElectionData(
         work.addVotes+=v.swap(t.whoFrom,candidates(t.whoFrom),t.whoTo,candidates(t.whoTo))
       }
       for ((n,v)<-src.partiallyUsed) {
-        work.partialExcludeVotes+=v->(work.partialExcludeVotes.getOrElse(v,0)+n)
+        work.partialExcludeVotes+=v->(work.partialExcludeVotes.getOrElse(v,0:PaperCountUnscaled)+n)
         work.addVotes+=v.swap(t.whoFrom,candidates(t.whoFrom),t.whoTo,candidates(t.whoTo)).subset(n)
       }
     } 
@@ -149,7 +150,7 @@ sealed class ElectionData(
     val source = Source.fromFile(f)
     val LineFormat = """\(([\d,]+)\)\s*\:\s*(\d+)""".r
     // .map{v=> ->v.src}
-    val existingVotes = new mutable.HashMap[mutable.WrappedArray[Int],ArrayBuffer[VoteSource]]()
+    val existingVotes = new mutable.HashMap[mutable.WrappedArray[CandidateIndex],ArrayBuffer[VoteSource]]()
     for (v<-makeVotes(Map.empty)) {
       existingVotes.getOrElseUpdate(mutable.WrappedArray.make(v.preferences),new ArrayBuffer[VoteSource]())+=v.src
     }
@@ -159,16 +160,16 @@ sealed class ElectionData(
         case "Add Ballots" => mode=line
         case "Remove Ballots" => mode=line
         case LineFormat(candidateList,ns) =>
-          val candidates = candidateList.split(',').map{_.toInt}
-          val n = ns.toInt
+          val candidates : Array[CandidateIndex] = candidateList.split(',').map{_.toInt}
+          val n : PaperCountUnscaled = ns.toInt
           if (mode=="Add Ballots") {
             work.addVotes+=new BTL(candidates,n)
           } else if (mode=="Remove Ballots") {
-            val key : mutable.WrappedArray[Int] = mutable.WrappedArray.make(candidates)
+            val key : mutable.WrappedArray[CandidateIndex] = mutable.WrappedArray.make(candidates)
             val l : ArrayBuffer[VoteSource] = existingVotes.getOrElse(key,throw new Exception("No such vote "+line))
             var togo = n
             for (s<-l) if (togo>0 && !work.excludeVotes(s)) {
-              val left = s.n - work.partialExcludeVotes.getOrElse(s,0)
+              val left = s.n - work.partialExcludeVotes.getOrElse(s,0:PaperCountUnscaled)
               val used = togo min left
               togo-=used
               val newLeft = left-used
@@ -183,17 +184,17 @@ sealed class ElectionData(
   }
 
   /** Simulate an error rate in OCR reading to get new data */
-  def simulateOCRerror(r:Random,errorSource:OCRError,minFormalATL:Int,minFormatBTL:Int,stats:Option[OCRStats]) : ElectionData = {
+  def simulateOCRerror(r:Random,errorSource:OCRError,minFormalATL:PreferenceNumber,minFormalBTL:PreferenceNumber,stats:Option[OCRStats]) : ElectionData = {
     val newSATL = satls
     val newRATLS = new ArrayBuffer[ATL]()
-    def hadVote(atl:Boolean,validPrefs:Int,hasError:Boolean) : Unit = for (s<-stats) s.add(new OCRVoteStatistic(atl,validPrefs,hasError))
+    def hadVote(atl:Boolean,validPrefs:PreferenceNumber,hasError:Boolean) : Unit = for (s<-stats) s.add(new OCRVoteStatistic(atl,validPrefs,hasError))
     for (b<-ratls) {
       var numUnchanged = 0
-      for (_<-0 until b.n) {
+      for (_<- (0:PaperCountUnscaled) until b.n) {
         val marks = errorSource.change(r,numCandidates,b.groups, null)
-        if (b.groups.toList==marks.toList) { numUnchanged+=1; hadVote(true,marks.length,false) }
+        if (b.groups.toList==marks.toList) { numUnchanged+=1; hadVote(atl = true,marks.length,hasError = false) }
         else if (marks.length>=minFormalATL) { newRATLS+=new ATL(marks,1); hadVote(true,marks.length,true) }
-        else hadVote(true,0,true)
+        else hadVote(atl = true,0,hasError = true)
       }
       if (numUnchanged==b.n) newRATLS+=b
       else if (numUnchanged>0) newRATLS+=b.subset(numUnchanged)
@@ -201,11 +202,11 @@ sealed class ElectionData(
     val newBTL = new ArrayBuffer[BTL]()
     for (b<-btls) {
       var numUnchanged = 0
-      for (_<-0 until b.n) {
+      for (_<- (0:PaperCountUnscaled) until b.n) {
         val marks = errorSource.change(r,numCandidates,b.candidates, -1)
-        if (util.Arrays.equals(b.candidates,marks)) { numUnchanged+=1; hadVote(false,marks.length,false) }
-        else if (marks.length>=minFormatBTL) { newBTL+=new BTL(marks,1); hadVote(false,marks.length,true) }
-        else hadVote(false,0,true)
+        if (util.Arrays.equals(b.candidates,marks)) { numUnchanged+=1; hadVote(atl = false,marks.length,hasError = false) }
+        else if (marks.length>=minFormalBTL) { newBTL+=new BTL(marks,1); hadVote(false,marks.length,true) }
+        else hadVote(atl = false,0,hasError = true)
       }
       if (numUnchanged==b.n) newBTL+=b
       else if (numUnchanged>0) newBTL+=b.subset(numUnchanged)
@@ -214,7 +215,7 @@ sealed class ElectionData(
   }
 
   /** Ignore preferences after a certain one. Used to see how important having long preferences are. */
-  def dropPreferencesBeyond(lastKeptPreference:Int) : ElectionData = {
+  def dropPreferencesBeyond(lastKeptPreference:PreferenceNumber) : ElectionData = {
     new ElectionData(meta,satls,ratls.map{_.dropPreferencesBeyond(lastKeptPreference)},btls.map{_.dropPreferencesBeyond(lastKeptPreference)},numInformal)
   }
   val getSimpleStatistics = new ElectionDataSimpleStatistics(numSATLs,numRATLs,numBTLs,ratls.length,btls.length,totalFormalVotes,numInformal,candidates.length,usesGroupVotingTickets,meta.downloadLocation)
@@ -307,72 +308,72 @@ class OCRErrorDigitTable(pErrors:Array[Array[Double]]) extends OCRErrorDigit {
   def parameter:String = pErrors.map{_.mkString(",")}.mkString(",")
 }
 
-class ElectionDataSimpleStatistics(val numSATLs:Int,val numRATLs:Int,val numBTLs:Int,val uniqueRATLs:Int,val uniqueBTLs:Int,val formalVotes:Int,val informalVotes:Int,val numCandidates:Int,val usesGroupVotingTickets:Boolean,val downloadLocation:Array[String])
+class ElectionDataSimpleStatistics(val numSATLs:PaperCountUnscaled,val numRATLs:PaperCountUnscaled,val numBTLs:PaperCountUnscaled,val uniqueRATLs:PaperCountUnscaled,val uniqueBTLs:PaperCountUnscaled,val formalVotes:PaperCountUnscaled,val informalVotes:PaperCountUnscaled,val numCandidates:NumberOfCandidates,val usesGroupVotingTickets:Boolean,val downloadLocation:Array[String])
 
-class Vote(/** ordered list of candidates */ val preferences:Array[CandidateIndex],val numVoters:Int,val src:VoteSource)
+class Vote(/** ordered list of candidates */ val preferences:Array[CandidateIndex],val numVoters:PaperCountUnscaled,val src:VoteSource)
 
 
 trait VoteSource {
   def isATL : Boolean
   /** The number of votes here */
-  def n:Int
-  def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate) : VoteSourceSubsettable[VoteSource]
+  def n:PaperCountUnscaled
+  def swap(fromWho:CandidateIndex,candidateFrom:Candidate,toWho:CandidateIndex,candidateTo:Candidate) : VoteSourceSubsettable[VoteSource]
 }
 
 trait VoteSourceSubsettable[+T] extends VoteSource {
-  def subset(n:Int) : T
+  def subset(n:PaperCountUnscaled) : T
 }
 
 /** Single above the line vote for a single party - choose one ticket, basically. */
-sealed class SATL(val group:String,val numVoters:Int) extends Dumpable with VoteSourceSubsettable[SATL] {
+sealed class SATL(val group:String,val numVoters:PaperCountUnscaled) extends Dumpable with VoteSourceSubsettable[SATL] {
   override def line: String = ""+group+"\t"+numVoters
   override def isATL: Boolean = true
-  override def n: Int = numVoters
-  override def subset(n:Int) : SATL = new SATL(group,n)
-  override def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate): SATL = new SATL(candidateTo.group,numVoters) // not perfect, but as good as likely to get.
+  override def n: PaperCountUnscaled = numVoters
+  override def subset(n:PaperCountUnscaled) : SATL = new SATL(group,n)
+  override def swap(fromWho:CandidateIndex,candidateFrom:Candidate,toWho:CandidateIndex,candidateTo:Candidate): SATL = new SATL(candidateTo.group,numVoters) // not perfect, but as good as likely to get.
 }
 
 /** Above the line vote for multiple parties */
-sealed class ATL(/** groups listed in preference order */ val groups:Array[GroupID],val numVoters:Int) extends Dumpable with VoteSourceSubsettable[ATL] {
+sealed class ATL(/** groups listed in preference order */ val groups:Array[GroupID],val numVoters:PaperCountUnscaled) extends Dumpable with VoteSourceSubsettable[ATL] {
   override def line: String = groups.mkString(" ")+"\t"+numVoters
   override def isATL: Boolean = true
-  override def n: Int = numVoters
-  override def subset(n:Int) : ATL = new ATL(groups,n)
-  def dropPreferencesBeyond(lastKeptPreference:Int) : ATL = new ATL(groups.take(lastKeptPreference),numVoters)
-  override def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate) : ATL = { // assume destination is top of chart.
+  override def n: PaperCountUnscaled = numVoters
+  override def subset(n:PaperCountUnscaled) : ATL = new ATL(groups,n)
+  def dropPreferencesBeyond(lastKeptPreference:PreferenceNumber) : ATL = new ATL(groups.take(lastKeptPreference),numVoters)
+  override def swap(fromWho:CandidateIndex,candidateFrom:Candidate,toWho:CandidateIndex,candidateTo:Candidate) : ATL = { // assume destination is top of chart.
     new ATL(groups.map{c => if (c==candidateFrom.group) candidateTo.group else if (c==candidateTo.group) candidateFrom.group else c},numVoters)
   }
 } 
 
 /** Below the line vote */
-sealed class BTL(/** candidate ids listed in preference order */ val candidates:Array[CandidateIndex],val numVoters:Int) extends Dumpable with VoteSourceSubsettable[BTL] {
+sealed class BTL(/** candidate ids listed in preference order */ val candidates:Array[CandidateIndex],val numVoters:PaperCountUnscaled) extends Dumpable with VoteSourceSubsettable[BTL] {
   override def line: String = candidates.mkString(",")+"\t"+numVoters
   override def isATL: Boolean = false
-  override def n: Int = numVoters
-  override def subset(n:Int) : BTL = new BTL(candidates,n)
-  def dropPreferencesBeyond(lastKeptPreference:Int) : BTL = new BTL(candidates.take(lastKeptPreference),numVoters)
-  override def swap(fromWho:Int,candidateFrom:Candidate,toWho:Int,candidateTo:Candidate): BTL = new BTL(candidates.map{c => if (c==fromWho) toWho else if (c==toWho) fromWho else c},numVoters)
+  override def n: PaperCountUnscaled = numVoters
+  override def subset(n:PaperCountUnscaled) : BTL = new BTL(candidates,n)
+  def dropPreferencesBeyond(lastKeptPreference:PreferenceNumber) : BTL = new BTL(candidates.take(lastKeptPreference),numVoters)
+  override def swap(fromWho:CandidateIndex,candidateFrom:Candidate,toWho:CandidateIndex,candidateTo:Candidate): BTL = new BTL(candidates.map{c => if (c==fromWho) toWho else if (c==toWho) fromWho else c},numVoters)
   def toVote : Vote = new Vote(candidates,numVoters,this)
 }
 
 object BTL {
   def atoiOrNegOneIfBlank(s:String) : Int = if (s=="") -1 else s.toInt
   def ofPreferencesInCandidateOrder(prefs:Array[String]) : BTL = ofPreferencesInCandidateOrder(prefs.map{atoiOrNegOneIfBlank}) // see also BelowTheLineBuilderByCandidateID.ofPreferencesInCandidateOrderNotAssumingFormality
-  def ofPreferencesInCandidateOrder(prefs:Array[Int]) : BTL = {
+  def ofPreferencesInCandidateOrder(prefs:Array[PreferenceNumber]) : BTL = {
     val res = Array.fill(prefs.length)(-1)
     for (i<-prefs.indices) if (prefs(i)>0) res(prefs(i)-1)=i
     new BTL(res.takeWhile{_ >= 0},1)
   }
 }
 
-class ActualListOfTamperableVotes(val allused:Array[VoteSource],val partiallyUsed:List[(Int,VoteSource)]) {
+class ActualListOfTamperableVotes(val allused:Array[VoteSource],val partiallyUsed:List[(PaperCountUnscaled,VoteSource)]) {
   /** Split into a list of length n and a list of all others */
-  def split(n:Int) : (ActualListOfTamperableVotes,ActualListOfTamperableVotes) = {
+  def split(n:PaperCountUnscaled) : (ActualListOfTamperableVotes,ActualListOfTamperableVotes) = {
     var togo = n
     val buffer1 = new ArrayBuffer[VoteSource]
     val buffer2 = new ArrayBuffer[VoteSource]
-    val partial1 = new ListBuffer[(Int,VoteSource)]
-    val partial2 = new ListBuffer[(Int,VoteSource)]
+    val partial1 = new ListBuffer[(PaperCountUnscaled,VoteSource)]
+    val partial2 = new ListBuffer[(PaperCountUnscaled,VoteSource)]
     for (v<-allused) {
       if (togo==0) buffer2+=v
       else if (togo>=v.n) { buffer1+=v; togo-=v.n }

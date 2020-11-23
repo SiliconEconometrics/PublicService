@@ -3,9 +3,10 @@
 This contains a variety of programs for counting STV elections in
 Australia; in particular for
 *  Federal Senate
-*  NSW local and legislative council
-*  Victorian Senate (little tested)
-*  WA Senate (little tested)
+*  NSW local and Legislative Council
+*  Victorian Legislative Council (little tested)
+*  WA Legislative Council (little tested)
+*  ACT Legislative Assembly
 
 More information about more complex usage is included in the CountVotes/README.txt file. This file
 focuses on compiling and running for someone not used to Scala.

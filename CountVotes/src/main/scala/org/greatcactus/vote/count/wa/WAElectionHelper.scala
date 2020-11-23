@@ -65,12 +65,12 @@ class WAElectionHelper (data:ElectionData,candidatesToBeElected:Int,ticketRoundi
   // 5a compute transfer value
 //    val rawvotes : PlainVotes = ballots(candidate).asPlain
     val surplus = tallys(candidate)-quota
-    val transferValueMultiple = surplus.toDouble/tallys(candidate) 
-    val transferValueMultipleDescription = new TransferValueComputationSingleValue(surplus,tallys(candidate),0,transferValueMultiple)
+    val transferValueMultiple : TransferValue = MainDataTypes.transferValue(surplus,tallys(candidate))
+    val transferValueMultipleDescription = new TransferValueComputationSingleValue(surplus,tallys(candidate),0,transferValueMultiple.toDouble)
     // 5c distribute
-    var cumExhausted = 0
+    var cumExhausted : Tally = 0
     var needToEndCount = false
-    var cumVotesTrans = 0
+    var cumVotesTrans : Tally = 0
     for (((tv,fromCount),plain)<-ballots(candidate).sortedByCountNumber) { // split up by old transfer value, 5c(ii), [ and also by from count number???? See big comment above excludeCandidate ]
       if (needToEndCount) {    
         report.finishCount()
@@ -79,20 +79,20 @@ class WAElectionHelper (data:ElectionData,candidatesToBeElected:Int,ticketRoundi
         needToEndCount=false
       }
       val transferValue = tv * transferValueMultiple
-      val transferValueDescription = new TransferValueDescriptionMultipleComputation(tv,transferValueMultipleDescription,transferValue)
+      val transferValueDescription = new TransferValueDescriptionMultipleComputation(tv.toDouble,transferValueMultipleDescription,transferValue.toDouble)
       val (distributedToCandidate : Array[PlainVotes],numExhausted:Tally) = plain.splitByNextContinuing(continuingCandidates)
-      val exhaustedVotes = roundDownRecordRounding(numExhausted*transferValue)
+      val exhaustedVotes = roundDownRecordRounding(transferValue,numExhausted)
       cumExhausted+=exhaustedVotes
       report.addExhaustedVotes(exhaustedVotes)
       report.addExhaustedPapers(numExhausted)
-      if (transferValue>0) { // (18)
-        val numVotesTrans = roundDownRecordRoundingReverseDirection(plain.numBallots*transferValue)
+      if (transferValue.numerator>0) { // (18)
+        val numVotesTrans = roundDownRecordRoundingReverseDirection(transferValue,plain.numBallots)
         report.declareCandidateDistributed(candidate,numVotesTrans,plain.numBallots, transferValueDescription,Nil,plain.numBallots, 0, exhaustedVotes,distributedMakesSense = false)
         report.fromCountReference(fromCount)
         for (nextChoice<-continuingCandidates.orderedList) { // 5c(i)
           val giveVotes : PlainVotes = distributedToCandidate(nextChoice)
-          val tally = roundDownRecordRounding(transferValue*giveVotes.numBallots)
-          ballots(nextChoice).add(giveVotes, transferValue, currentCountNumber,tally)
+          val tally = roundDownRecordRounding(transferValue,giveVotes.numBallots)
+          ballots(nextChoice).add(giveVotes, transferValue, currentCountNumber,0,tally)
           tallys(nextChoice)+=tally
         }
         clearRoundingPending()
@@ -134,7 +134,7 @@ class WAElectionHelper (data:ElectionData,candidatesToBeElected:Int,ticketRoundi
   override def sortedForExclusion(votes:WeightedVotes): List[((TransferValue, CountNumber), PlainVotes)] = {
     val expected = votes.sortedByCountNumber // will do highest first; (a) is a special case of (b)
     if (forceUselessFirstPreferenceDistributionIfNonePresent && (expected.isEmpty || expected.head._1._2 != 1) )
-        ((1.0,1),new PlainVotes)::expected
+        ((TransferValueOne,1),new PlainVotes)::expected
     else expected
   }
   override def finishExclusionEvenIfAllVacanciesFilled : Boolean = false // legislation seems to say this should be true, but WAEC doesn't do it, and it can never change results, so no reason to be upset.

@@ -1,5 +1,5 @@
 /*
-    Copyright 2015-2019 Silicon Econometrics Pty. Ltd.
+    Copyright 2015-2020 Silicon Econometrics Pty. Ltd.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -18,8 +18,7 @@
 
 
 package org.greatcactus.vote.count.nsw
-
-import org.greatcactus.vote.count._
+import org.greatcactus.vote.count.MainDataTypes.PaperCountUnscaled
 import org.greatcactus.vote.count.ballots.ElectionData
 
 
@@ -33,8 +32,8 @@ object PreferencesStats extends App {
     val from = data.candidateIndex(prefFrom)
     val to = prefsTo.map{data.candidateIndex}
     val careAbout = (from::to).toSet
-    var exhausted = 0
-    val prefTo = new Array[Int](data.candidates.length)
+    var exhausted : PaperCountUnscaled = 0
+    val prefTo = new Array[PaperCountUnscaled](data.candidates.length)
     println("Loaded data")
     val votes = data.makeVotes()
     println("Got votes")

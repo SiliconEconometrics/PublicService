@@ -17,9 +17,9 @@
  */
 package org.greatcactus.vote.count.wa
 
+import org.greatcactus.vote.count.{ElectionCountReport, ElectionResultReport, FindBaseDir}
 import org.greatcactus.vote.count.MainDataTypes._
 import org.greatcactus.vote.count.wa.parsing.{WA2017ElectionData, WA2017OfficialResults, WARegion}
-import org.greatcactus.vote.count.{ElectionCountReport, FindBaseDir}
 import org.junit.Assert._
 import org.junit.Test;
 

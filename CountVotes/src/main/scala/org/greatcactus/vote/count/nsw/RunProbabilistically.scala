@@ -17,7 +17,6 @@
  */
 
 package org.greatcactus.vote.count.nsw
-
 import java.io.File
 
 import org.greatcactus.vote.count._
